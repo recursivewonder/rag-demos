@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Embedding map</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .top h1 { margin: 0 10px 0 0; }
+  .top .sp { flex: 1; }
+  .illu { font-size: 13px; color: var(--warn); background: var(--warn-tint); border-radius: 6px; padding: 2px 8px; }
+  .main { display: grid; grid-template-columns: 640px 1fr; gap: 12px; height: 528px; }
+  svg { display: block; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+  .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .side select { width: 100%; font-size: 15px; }
+  .row { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .row input[type=range] { flex: 1; }
+  .hit { display: grid; grid-template-columns: 22px 1fr 54px; gap: 6px; align-items: center; font-size: 14px; padding: 3px 0; border-bottom: 1px solid var(--zebra); }
+  .hit .rk { color: var(--muted); font-weight: 700; text-align: right; }
+  .hit .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hit .sc { font-weight: 700; color: var(--navy); text-align: right; font-size: 13px; }
+  .hit .bar { grid-column: 2 / 4; height: 5px; background: var(--zebra); border-radius: 3px; margin-top: -2px; }
+  .hit .bar i { display: block; height: 100%; border-radius: 3px; background: var(--orange); }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px 8px; font-size: 13px; color: var(--muted); }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 13px; padding: 6px 9px; border-radius: 6px; max-width: 330px; display: none; z-index: 5; line-height: 1.35; }
+  .card h3 { font-size: 15px; margin-bottom: 4px; }
+  .formula { font-family: var(--mono); font-size: 14px; line-height: 1.6; }
+  .bigcos { font-size: 46px; font-weight: 800; color: var(--orange); line-height: 1; }
+  .handle { cursor: grab; }
+  .pbtn { text-align: left; font-size: 14px; }
+  text { font-family: var(--sans); }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Embedding map</h1>
+  <button data-tab="map">Map of passages</button>
+  <button data-tab="cos">Cosine</button>
+  <span class="sp"></span>
+  <span class="illu">Illustrative: real embeddings have hundreds of dimensions</span>
+</div>
+<div class="main" id="main"></div>
+<div class="tip" id="tip"></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script src="search.js"></script>
+<script>
+const COL = { minutes: '#134F7C', mail: '#7d4cc2', sop: '#1e8449', design: '#2aa198', policy: '#7cb342', config: '#8d6e3f',
+  ki: '#F47421', onedrive: '#1592d6', log: '#6b6b6b', jira: '#d4a017', ticket: '#c2185b' };
+const TYPENAME = { minutes: 'minutes', mail: 'mail', sop: 'SOP', design: 'design', policy: 'policy', config: 'config', ki: 'known issue', onedrive: 'OneDrive note', log: 'log line', jira: 'Jira', ticket: 'ticket' };
+const W = 640, H = 528, PAD = 26;
+const px = x => PAD + x * (W - 2 * PAD), py = y => H - PAD - y * (H - 2 * PAD);
+const REGIONS = [[0.78, 0.98, 'POC vendors: minutes & mail'], [0.17, 0.62, 'Content Hub search'], [0.47, 0.04, 'transfers, alerts, logs'], [0.27, 0.95, 'retention']];
+const state = { tab: Demo.param('preset', '') === 'cosine' ? 'cos' : 'map', q: 'q4', k: 5, a: [0.8, 0.6], b: [0.7, 0.7] };
+
+function render(s) {
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === s.tab));
+  document.getElementById('main').style.gridTemplateColumns = s.tab === 'cos' ? '528px 1fr' : '640px 1fr';
+  if (s.tab === 'map') renderMap(s); else renderCos(s);
+}
+
+function renderMap(s) {
+  const q = QUERIES.find(x => x.id === s.q);
+  const ranked = Search.semantic(s.q, CORPUS.map(c => c.id));
+  const top = ranked.slice(0, s.k), topIds = new Set(top.map(r => r.id));
+  let g = '';
+  REGIONS.forEach(([x, y, t]) => { g += `<text x="${px(x)}" y="${py(y)}" text-anchor="middle" font-size="13" fill="#9aa3ad" font-style="italic">${t}</text>`; });
+  top.forEach(r => { const c = Demo.chunk(r.id); g += `<line x1="${px(q.xy[0])}" y1="${py(q.xy[1])}" x2="${px(c.xy[0])}" y2="${py(c.xy[1])}" stroke="#F47421" stroke-width="${1 + r.score * 2.5}" stroke-opacity=".75"/>`; });
+  CORPUS.forEach(c => {
+    const on = topIds.has(c.id);
+    g += `<circle data-id="${c.id}" cx="${px(c.xy[0])}" cy="${py(c.xy[1])}" r="${on ? 9 : 7}" fill="${COL[c.type]}" stroke="${on ? '#F47421' : '#fff'}" stroke-width="${on ? 3 : 1.5}" opacity="${on ? 1 : .8}" style="cursor:pointer"/>`;
+  });
+  top.forEach((r, i) => { const c = Demo.chunk(r.id); const right = c.xy[0] > 0.8 ? false : c.xy[0] < 0.2 ? true : i % 2 === 0;
+    g += `<text x="${px(c.xy[0]) + (right ? 11 : -11)}" y="${py(c.xy[1]) + 4}" text-anchor="${right ? 'start' : 'end'}" font-size="13" font-weight="600" fill="#1d2733" paint-order="stroke" stroke="#fbfaf7" stroke-width="4">${Demo.esc(Search.short(c))}</text>`; });
+  g += `<g><rect x="${px(q.xy[0]) - 9}" y="${py(q.xy[1]) - 9}" width="18" height="18" transform="rotate(45 ${px(q.xy[0])} ${py(q.xy[1])})" fill="#F47421" stroke="#fff" stroke-width="2"/><text x="${px(q.xy[0])}" y="${py(q.xy[1]) + 28}" text-anchor="middle" font-size="13" font-weight="700" fill="#F47421" paint-order="stroke" stroke="#fbfaf7" stroke-width="4">query ${q.id}</text></g>`;
+  const types = Object.keys(COL);
+  document.getElementById('main').innerHTML = `
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" id="map">${g}</svg>
+    <div class="side">
+      <select id="qsel">${QUERIES.map(x => `<option value="${x.id}" ${x.id === s.q ? 'selected' : ''}>${x.id}: ${Demo.esc(x.text)}</option>`).join('')}</select>
+      <div class="row">top-k <input type="range" id="k" min="1" max="8" value="${s.k}"><b>${s.k}</b></div>
+      <div class="card" style="padding:6px 10px">
+        <div class="muted" style="font-size:13px">nearest by similarity <span style="color:var(--orange)">◆ query</span></div>
+        ${top.map((r, i) => { const c = Demo.chunk(r.id); return `<div class="hit"><span class="rk">${i + 1}</span><span class="nm"><span class="dot" style="background:${COL[c.type]}"></span>${Demo.esc(Search.short(c))}</span><span class="sc">${r.score.toFixed(2)}</span><div class="bar"><i style="width:${r.score * 100}%"></i></div></div>`; }).join('')}
+      </div>
+      <div class="legend">${types.map(t => `<span><span class="dot" style="background:${COL[t]}"></span>${TYPENAME[t]}</span>`).join('')}</div>
+      <div class="muted" style="font-size:13px">Hover a dot to read the passage. Neighbours share meaning, not words.</div>
+    </div>`;
+  document.getElementById('qsel').onchange = e => set({ q: e.target.value });
+  document.getElementById('k').oninput = e => set({ k: +e.target.value });
+  const tip = document.getElementById('tip');
+  document.querySelectorAll('#map circle').forEach(el => {
+    el.onmouseenter = () => { const c = Demo.chunk(el.dataset.id); tip.innerHTML = `<b>${Demo.esc(c.src)}</b><br>${Demo.esc(c.text)}<br><span style="opacity:.75">similarity to query: ${semanticScore(s.q, c.id).toFixed(2)}</span>`; tip.style.display = 'block'; };
+    el.onmousemove = e => { tip.style.left = Math.min(e.clientX + 12, 760) + 'px'; tip.style.top = Math.min(e.clientY + 12, 470) + 'px'; };
+    el.onmouseleave = () => { tip.style.display = 'none'; };
+  });
+}
+
+// --- cosine tab ---
+const CW = 528, R = 1.2, cx = v => CW / 2 + v * (CW / 2 - 20) / R, cy = v => CW / 2 - v * (CW / 2 - 20) / R;
+const inv = (X, Y) => [(X - CW / 2) * R / (CW / 2 - 20), -(Y - CW / 2) * R / (CW / 2 - 20)];
+const len = v => Math.hypot(v[0], v[1]);
+function renderCos(s) {
+  const a = s.a, b = s.b, dot = a[0] * b[0] + a[1] * b[1], la = len(a), lb = len(b);
+  const cos = la && lb ? dot / (la * lb) : 0;
+  const ang = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
+  const angA = Math.atan2(a[1], a[0]), angB = Math.atan2(b[1], b[0]);
+  // arc between the two arrows
+  const rr = 46; let d0 = angA, d1 = angB; let diff = d1 - d0; while (diff > Math.PI) diff -= 2 * Math.PI; while (diff < -Math.PI) diff += 2 * Math.PI;
+  const p0 = [CW / 2 + rr * Math.cos(d0), CW / 2 - rr * Math.sin(d0)], p1 = [CW / 2 + rr * Math.cos(d0 + diff), CW / 2 - rr * Math.sin(d0 + diff)];
+  let g = `<defs><marker id="ha" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#F47421"/></marker>
+    <marker id="hb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#134F7C"/></marker></defs>`;
+  for (let v = -1; v <= 1.001; v += 0.5) { g += `<line x1="${cx(v)}" y1="${cy(-R)}" x2="${cx(v)}" y2="${cy(R)}" stroke="#ece9e2"/><line x1="${cx(-R)}" y1="${cy(v)}" x2="${cx(R)}" y2="${cy(v)}" stroke="#ece9e2"/>`; }
+  g += `<circle cx="${CW / 2}" cy="${CW / 2}" r="${cx(1) - CW / 2}" fill="none" stroke="#d9d5cc" stroke-dasharray="4 4"/>`;
+  g += `<line x1="${cx(-R)}" y1="${cy(0)}" x2="${cx(R)}" y2="${cy(0)}" stroke="#9aa3ad"/><line x1="${cx(0)}" y1="${cy(-R)}" x2="${cx(0)}" y2="${cy(R)}" stroke="#9aa3ad"/>`;
+  g += `<text x="${cx(1) + 4}" y="${cy(0) + 16}" font-size="13" fill="#9aa3ad">1</text><text x="${cx(0) + 6}" y="${cy(1) - 4}" font-size="13" fill="#9aa3ad">1</text>`;
+  g += `<path d="M${p0[0]},${p0[1]} A${rr},${rr} 0 0 ${diff > 0 ? 0 : 1} ${p1[0]},${p1[1]}" fill="none" stroke="#b9770e" stroke-width="2.5"/>`;
+  g += `<line x1="${cx(0)}" y1="${cy(0)}" x2="${cx(a[0])}" y2="${cy(a[1])}" stroke="#F47421" stroke-width="4" marker-end="url(#ha)"/>`;
+  g += `<line x1="${cx(0)}" y1="${cy(0)}" x2="${cx(b[0])}" y2="${cy(b[1])}" stroke="#134F7C" stroke-width="4" marker-end="url(#hb)"/>`;
+  g += `<circle class="handle" data-h="a" cx="${cx(a[0])}" cy="${cy(a[1])}" r="13" fill="#F47421" fill-opacity=".25" stroke="#F47421" stroke-width="2"/>`;
+  g += `<circle class="handle" data-h="b" cx="${cx(b[0])}" cy="${cy(b[1])}" r="13" fill="#134F7C" fill-opacity=".2" stroke="#134F7C" stroke-width="2"/>`;
+  const anc = v => v[0] > 0.3 ? `text-anchor="end" x="${cx(v[0]) - 16}"` : `x="${cx(v[0]) + 16}"`;
+  g += `<text ${anc(a)} y="${cy(a[1]) + 30}" font-size="14" font-weight="700" fill="#F47421" paint-order="stroke" stroke="#fbfaf7" stroke-width="4">query (${a[0].toFixed(2)}, ${a[1].toFixed(2)})</text>`;
+  g += `<text ${anc(b)} y="${cy(b[1]) - 16}" font-size="14" font-weight="700" fill="#134F7C" paint-order="stroke" stroke="#fbfaf7" stroke-width="4">passage (${b[0].toFixed(2)}, ${b[1].toFixed(2)})</text>`;
+  const f = v => v.toFixed(2);
+  const side = `
+      <div class="card"><div class="muted" style="font-size:13px">cosine similarity</div><div class="bigcos">${cos.toFixed(2)}</div>
+        <div class="muted">angle ${ang.toFixed(0)}° · 1 = same direction, 0 = unrelated</div></div>
+      <div class="card formula">
+        cos = (q · p) / (|q| |p|)<br>
+        q · p = ${f(a[0])}×${f(b[0])} + ${f(a[1])}×${f(b[1])} = <b>${dot.toFixed(3)}</b><br>
+        |q| = ${la.toFixed(3)} &nbsp; |p| = ${lb.toFixed(3)}<br>
+        cos = ${dot.toFixed(3)} / ${(la * lb).toFixed(3)} = <b style="color:var(--orange)">${cos.toFixed(2)}</b>
+      </div>
+      <div class="muted" style="font-size:13px">Dot product = cosine × lengths. Most embedding models normalise to length 1, so then dot product = cosine.</div>
+      <div class="muted" style="font-size:13px;font-weight:700">Worked examples (drag the arrow tips to explore)</div>
+      <button class="pbtn" data-p="ki">query (0.8, 0.6) vs KI-014 (0.7, 0.7) → 0.99</button>
+      <button class="pbtn" data-p="vb">query (0.8, 0.6) vs vendor B pricing (−0.2, 0.98) → 0.43</button>
+      <button class="pbtn" data-p="norm">normalise both to length 1</button>`;
+  let svg = document.getElementById('cos');
+  if (!svg) {
+    document.getElementById('main').innerHTML = `<svg width="${CW}" height="${CW}" viewBox="0 0 ${CW} ${CW}" id="cos" style="touch-action:none"></svg><div class="side" id="cosside"></div>`;
+    svg = document.getElementById('cos');
+    let drag = null;
+    svg.onpointerdown = e => { const h = e.target.closest('.handle'); if (!h) return; drag = h.dataset.h; svg.setPointerCapture(e.pointerId); };
+    svg.onpointermove = e => {
+      if (!drag) return;
+      const r = svg.getBoundingClientRect(), sc = CW / r.width;
+      const v = inv((e.clientX - r.left) * sc, (e.clientY - r.top) * sc).map(n => Math.round(Math.max(-R, Math.min(R, n)) * 100) / 100);
+      if (Math.hypot(v[0], v[1]) < 0.08) return;
+      set({ [drag]: v });
+    };
+    svg.onpointerup = svg.onpointercancel = () => { drag = null; };
+    document.getElementById('cosside').onclick = e => {
+      const bn = e.target.closest('[data-p]'); if (!bn) return;
+      if (bn.dataset.p === 'ki') set({ a: [0.8, 0.6], b: [0.7, 0.7] });
+      if (bn.dataset.p === 'vb') set({ a: [0.8, 0.6], b: [-0.2, 0.98] });
+      if (bn.dataset.p === 'norm') { const n = v => { const l = len(v); return [Math.round(v[0] / l * 100) / 100, Math.round(v[1] / l * 100) / 100]; }; set({ a: n(state.a), b: n(state.b) }); }
+    };
+  }
+  svg.innerHTML = g;
+  document.getElementById('cosside').innerHTML = side;
+}
+
+const set = Demo.sync('embedding-map', state, render);
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => set({ tab: b.dataset.tab }));
+Demo.label();
+</script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Eval calculator</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .top h1 { margin: 0 10px 0 0; }
+  .top .sp { flex: 1; }
+  .main { height: 520px; }
+  .t1 { display: grid; grid-template-columns: 520px 1fr; gap: 14px; height: 100%; }
+  .h { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+  .res { display: grid; grid-template-columns: 26px 1fr 64px 30px; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+  .res .rk { font-size: 20px; font-weight: 800; color: var(--navy); text-align: center; }
+  .res .nm { font-weight: 700; font-size: 15px; }
+  .res .tx { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
+  .grade { border-radius: 8px; padding: 4px 0; text-align: center; font-weight: 800; cursor: pointer; border: 2px solid transparent; user-select: none; font-size: 15px; }
+  .g0 { background: var(--zebra); color: var(--muted); } .g1 { background: #e3f1e8; color: #3c7d55; } .g2 { background: #bfe3cc; color: #1f6b3e; } .g3 { background: var(--good); color: #fff; }
+  .mv { display: flex; flex-direction: column; gap: 2px; }
+  .mv button { padding: 0 4px; font-size: 13px; line-height: 17px; }
+  .metric { display: grid; grid-template-columns: 96px 1fr 60px; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .metric .nm { font-weight: 700; color: var(--navy); }
+  .metric .f { grid-column: 1 / 4; font-family: var(--mono); font-size: 13px; color: var(--muted); margin-top: -6px; }
+  .track { height: 16px; background: var(--zebra); border-radius: 8px; overflow: hidden; }
+  .track i { display: block; height: 100%; background: var(--navy); border-radius: 8px; transition: width .4s; }
+  .val { font-weight: 800; font-size: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 13px; color: var(--muted); }
+  /* claims */
+  .t2 { display: grid; grid-template-columns: 1fr 380px; gap: 14px; height: 100%; }
+  .ans { font-size: 22px; line-height: 2; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+  .claim { border-radius: 6px; padding: 3px 4px; cursor: pointer; border-bottom: 3px solid var(--line); }
+  .claim .n { font-size: 13px; font-weight: 800; vertical-align: super; color: var(--muted); margin-left: 2px; }
+  .v-sup { background: var(--good-tint); border-color: var(--good); } .v-part { background: var(--warn-tint); border-color: var(--warn); } .v-uns { background: var(--bad-tint); border-color: var(--bad); }
+  .psg { border: 1px solid var(--line); border-left: 5px solid var(--orange); border-radius: 8px; padding: 6px 10px; font-size: 14px; margin-bottom: 6px; }
+  .why { font-size: 14px; border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; }
+  .bigf { font-size: 48px; font-weight: 800; color: var(--navy); line-height: 1; }
+  .vbtns { display: flex; gap: 6px; margin: 8px 0; }
+  .legend span { display: inline-block; font-size: 13px; padding: 1px 8px; border-radius: 4px; margin-right: 4px; }
+  /* triad */
+  .t3 { display: grid; grid-template-columns: 560px 1fr; gap: 14px; height: 100%; }
+  .edge { cursor: pointer; }
+  .info { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .info h3 { font-size: 20px; margin-bottom: 4px; }
+  .info .row { margin: 6px 0; font-size: 15px; }
+  .info .k { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; display: block; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Evaluation</h1>
+  <button data-tab="ret">Retrieval metrics</button>
+  <button data-tab="claim">Claim checker</button>
+  <button data-tab="triad">RAG triad</button>
+  <span class="sp"></span>
+  <span class="muted" id="sub"></span>
+</div>
+<div class="main" id="main"></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script src="search.js"></script>
+<script>
+const NAMES = { c03: 'minutes 09-17 (vendor A demo)', c07: 'minutes 10-01 (decision)', c02: 'kick-off 09-03 (success criteria)', c05: 'minutes 09-24 (vendor B)', c19: 'SD-LOG-01 §2' };
+const CLAIMS = [
+  { t: 'Vendor A was dropped on 2026-10-01', v: 'sup', why: 'The decision passage says vendor A was dropped, dated 2026-10-01.', src: 'c07' },
+  { t: 'because it is cloud-only', v: 'part', why: 'The passages say no on-premise parser exists before next year. "Cloud-only" overstates it: it\'s about the parser, and not for ever.', src: 'c07' },
+  { t: 'and too expensive.', v: 'uns', why: 'No passage mentions price or cost. This came from the model, not the context.', src: null },
+];
+const VAL = { sup: 1, part: 0.5, uns: 0 }, VLAB = { sup: 'supported', part: 'partly', uns: 'unsupported' };
+const TRIAD = {
+  cr: { name: 'Context relevance', pair: 'question ↔ context', ask: 'Did retrieval bring passages about the question?', ex: 'For "why did we drop vendor A?", the 09-17 demo minutes are on topic but don\'t hold the answer; the 10-01 decision does.', catches: 'bad chunking, wrong search, filters too tight', tool: 'RAGAS context precision / recall · TruLens context relevance' },
+  fa: { name: 'Faithfulness', pair: 'context ↔ answer', ask: 'Is every claim in the answer backed by a passage?', ex: '"…and too expensive" has no passage behind it: faithfulness 1.5 of 3.', catches: 'hallucination, ignored passages, followed injections', tool: 'RAGAS faithfulness · TruLens groundedness' },
+  ar: { name: 'Answer relevance', pair: 'answer ↔ question', ask: 'Does the answer address what was asked?', ex: 'A correct summary of the 10-01 minutes that never says why vendor A went would score low.', catches: 'evasive or off-topic answers, over-long summaries', tool: 'RAGAS answer relevancy · TruLens answer relevance' },
+};
+const state = { tab: { claims: 'claim', triad: 'triad' }[Demo.param('preset', '')] || 'ret', order: ['c03', 'c07', 'c02', 'c05', 'c19'], grades: { c03: 0, c07: 3, c02: 1, c05: 0, c19: 0 }, verdicts: [null, null, null], judged: false, sel: 0, edge: 'fa' };
+
+function render(s) {
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === s.tab));
+  document.getElementById('sub').textContent = s.tab === 'ret' ? 'question: why did we drop vendor A?' : s.tab === 'claim' ? 'an LLM judge splits the answer into claims and checks each one' : 'three checks, one per pair';
+  document.getElementById('main').innerHTML = s.tab === 'ret' ? ret(s) : s.tab === 'claim' ? claim(s) : triad(s);
+}
+
+function ret(s) {
+  const g = s.order.map(id => s.grades[id]);
+  const R = g.filter(x => x > 0).length;
+  const relAt = k => g.slice(0, k).filter(x => x > 0).length;
+  const first = g.findIndex(x => x > 0);
+  const dcg = g.reduce((a, x, i) => a + x / Math.log2(i + 2), 0);
+  const ideal = g.slice().sort((a, b) => b - a), idcg = ideal.reduce((a, x, i) => a + x / Math.log2(i + 2), 0);
+  const r = v => (Math.round(v * 100) / 100).toFixed(2);
+  const terms = arr => arr.map((x, i) => x ? `${x}/log₂(${i + 2})` : null).filter(Boolean).join(' + ') || '0';
+  const M = [
+    ['Recall@1', R ? relAt(1) / R : 0, `${relAt(1)} of ${R} relevant in the top 1`],
+    ['Recall@3', R ? relAt(3) / R : 0, `${relAt(3)} of ${R} relevant in the top 3`],
+    ['Recall@5', R ? relAt(5) / R : 0, `${relAt(5)} of ${R} relevant in the top 5`],
+    ['MRR', first >= 0 ? 1 / (first + 1) : 0, first >= 0 ? `1 / rank of first relevant = 1 / ${first + 1}` : 'no relevant result: 0'],
+    ['nDCG@5', idcg ? dcg / idcg : 0, `DCG ${terms(g)} = ${dcg.toFixed(2)} · ideal ${idcg.toFixed(2)}`],
+  ];
+  return `<div class="t1"><div><div class="h">Ranked results · click a grade to change it, arrows to reorder</div>` +
+    s.order.map((id, i) => { const c = Demo.chunk(id); return `<div class="res"><div class="rk">${i + 1}</div><div><div class="nm">${NAMES[id]}</div><div class="tx">${Demo.esc(c.text)}</div></div>
+      <div class="grade g${s.grades[id]}" data-grade="${id}" title="0 = not relevant … 3 = the answer">${s.grades[id]}</div>
+      <div class="mv"><button data-up="${i}" ${i === 0 ? 'disabled' : ''}>▲</button><button data-down="${i}" ${i === 4 ? 'disabled' : ''}>▼</button></div></div>`; }).join('') +
+    `<div class="hint">Grades: 3 = the answer, 2 = strong support, 1 = useful background, 0 = not relevant. Recall counts every grade above 0; nDCG uses the grade as gain. Assumes every relevant chunk is somewhere in this list.</div>
+    <div style="margin-top:6px"><button id="best">Best order</button> <button id="reset">Reset</button></div></div>
+    <div><div class="h">Metrics, live</div>` +
+    M.map(([n, v, f]) => `<div class="metric"><span class="nm">${n}</span><div class="track"><i style="width:${v * 100}%;background:${v >= 0.8 ? 'var(--good)' : v >= 0.5 ? 'var(--navy)' : 'var(--orange)'}"></i></div><span class="val">${r(v)}</span><span class="f">${f}</span></div>`).join('') +
+    `<div class="hint" style="margin-top:6px">MRR is averaged over every question in the golden set; here it's one question. Recall@k asks "did it get in at all?"; MRR and nDCG ask "how near the top?".</div></div></div>`;
+}
+
+function claim(s) {
+  const done = s.verdicts.filter(Boolean).length;
+  const score = s.verdicts.reduce((a, v) => a + (v ? VAL[v] : 0), 0);
+  const c = CLAIMS[s.sel], v = s.verdicts[s.sel];
+  return `<div class="t2"><div>
+    <div class="h">Answer under test · click a claim</div>
+    <div class="ans">${CLAIMS.map((cl, i) => `<span class="claim ${s.verdicts[i] ? 'v-' + s.verdicts[i] : ''}" data-claim="${i}" style="${s.sel === i ? 'outline:2px solid var(--orange)' : ''}">${Demo.esc(cl.t)}<span class="n">${i + 1}</span></span>`).join(' ')}</div>
+    <div class="h" style="margin-top:10px">Claim ${s.sel + 1}: "${Demo.esc(c.t)}"</div>
+    <div class="vbtns">${['sup', 'part', 'uns'].map(k => `<button data-v="${k}" class="${v === k ? 'on' : ''}">${VLAB[k]}</button>`).join('')}<span style="flex:1"></span><button id="judge" class="warn ${s.judged ? 'on' : ''}">⚖ Judge</button><button id="clear">Clear</button></div>
+    ${s.judged ? `<div class="why v-${c.v}"><b>Judge: ${VLAB[c.v]}.</b> ${Demo.esc(c.why)}</div>` : '<div class="hint">Mark each claim yourself, then press Judge to compare with an LLM judge.</div>'}
+    <div class="h" style="margin-top:8px">Passages it was given</div>
+    ${['c07', 'c02', 'c19'].map(id => { const p = Demo.chunk(id); return `<div class="psg" style="${s.judged && c.src === id ? 'background:var(--navy-tint)' : ''}"><span class="chip ${p.type}">${Demo.esc(p.src)}</span> ${Demo.esc(p.text)}</div>`; }).join('')}
+  </div><div>
+    <div class="h">Faithfulness</div>
+    <div class="bigf">${score.toFixed(1)} <span style="font-size:24px;color:var(--muted)">of 3</span></div>
+    <div class="track" style="margin:8px 0"><i style="width:${score / 3 * 100}%;background:${score / 3 >= 0.8 ? 'var(--good)' : 'var(--orange)'}"></i></div>
+    <div style="font-size:16px">= ${(score / 3).toFixed(2)} <span class="muted">(${done} of 3 claims marked)</span></div>
+    <div class="hint" style="margin:8px 0">supported = 1, partly = 0.5, unsupported = 0. Score = sum ÷ number of claims.</div>
+    <div class="legend"><span class="v-sup">supported</span><span class="v-part">partly</span><span class="v-uns">unsupported</span></div>
+    <div class="hint" style="margin-top:12px">Faithfulness checks the answer against the context only. It says nothing about whether retrieval found the right passages: that's context relevance.</div>
+  </div></div>`;
+}
+
+function triad(s) {
+  const P = { q: [280, 50], c: [70, 420], a: [490, 420] };
+  const E = { cr: ['q', 'c'], fa: ['c', 'a'], ar: ['a', 'q'] };
+  let svg = `<svg width="560" height="510" viewBox="0 0 560 510">`;
+  Object.entries(E).forEach(([k, [x, y]]) => {
+    const on = s.edge === k, [x1, y1] = P[x], [x2, y2] = P[y], mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const off = k === 'cr' ? [-70, -10] : k === 'ar' ? [70, -10] : [0, 40];
+    svg += `<g class="edge" data-edge="${k}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="30"/>
+      <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${on ? '#F47421' : '#134F7C'}" stroke-width="${on ? 7 : 4}" stroke-linecap="round"/>
+      <rect x="${mx + off[0] - 92}" y="${my + off[1] - 17}" width="184" height="34" rx="17" fill="${on ? '#F47421' : '#fff'}" stroke="${on ? '#F47421' : '#134F7C'}" stroke-width="2"/>
+      <text x="${mx + off[0]}" y="${my + off[1] + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="${on ? '#fff' : '#134F7C'}">${TRIAD[k].name}</text></g>`;
+  });
+  [['q', 'Question', '"why did we drop vendor A?"'], ['c', 'Context', 'retrieved passages'], ['a', 'Answer', 'with citations']].forEach(([k, n, sub]) => {
+    const [x, y] = P[k];
+    svg += `<circle cx="${x}" cy="${y}" r="40" fill="#134F7C"/><text x="${x}" y="${y + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">${n}</text>
+      <text x="${x}" y="${y + (k === 'q' ? -50 : 62)}" text-anchor="middle" font-size="13" fill="#5d6874">${sub}</text>`;
+  });
+  svg += `</svg>`;
+  const t = TRIAD[s.edge];
+  return `<div class="t3"><div>${svg}</div><div class="info"><h3>${t.name}</h3><div class="muted" style="font-size:15px">${t.pair}</div>
+    <div class="row"><span class="k">Asks</span>${t.ask}</div>
+    <div class="row"><span class="k">Contoso example</span>${t.ex}</div>
+    <div class="row"><span class="k">Catches</span>${t.catches}</div>
+    <div class="row"><span class="k">In the tools</span>${t.tool}</div>
+    <div class="hint" style="margin-top:10px">Click an edge of the triangle. All three can be scored by an LLM judge over the golden set, on every change.</div></div></div>`;
+}
+
+const set = Demo.sync('eval-calc', state, render);
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => set({ tab: b.dataset.tab }));
+document.getElementById('main').addEventListener('click', e => {
+  const t = e.target.closest('[data-grade],[data-up],[data-down],[data-claim],[data-v],[data-edge],#judge,#clear,#best,#reset'); if (!t) return;
+  const d = t.dataset;
+  if (d.grade) set({ grades: Object.assign({}, state.grades, { [d.grade]: (state.grades[d.grade] + 1) % 4 }) });
+  else if (d.up || d.down) { const o = state.order.slice(), i = +(d.up || d.down), j = d.up ? i - 1 : i + 1; [o[i], o[j]] = [o[j], o[i]]; set({ order: o }); }
+  else if (d.claim) set({ sel: +d.claim });
+  else if (d.v) { const v = state.verdicts.slice(); v[state.sel] = v[state.sel] === d.v ? null : d.v; set({ verdicts: v }); }
+  else if (d.edge) set({ edge: d.edge });
+  else if (t.id === 'judge') set({ judged: true, verdicts: CLAIMS.map(c => c.v) });
+  else if (t.id === 'clear') set({ judged: false, verdicts: [null, null, null] });
+  else if (t.id === 'best') set({ order: state.order.slice().sort((a, b) => state.grades[b] - state.grades[a]) });
+  else if (t.id === 'reset') set({ order: ['c03', 'c07', 'c02', 'c05', 'c19'], grades: { c03: 0, c07: 3, c02: 1, c05: 0, c19: 0 } });
+});
+Demo.label();
+</script>
+</body>
+</html>

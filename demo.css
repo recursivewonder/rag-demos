@@ -1,0 +1,30 @@
+/* Shared look for the RAG demos: the deck's theme tokens, sized to sit in a slide iframe. */
+:root {
+  --navy: #134F7C; --navy-deep: #0c3553; --navy-tint: #eaf1f7;
+  --orange: #F47421; --orange-tint: #fff1e7;
+  --ink: #1d2733; --muted: #5d6874; --paper: #fbfaf7; --card: #ffffff; --line: #e2dfd7; --zebra: #f6f4ef;
+  --good: #1e8449; --good-tint: #e8f6ee; --bad: #c0392b; --bad-tint: #fcecea; --warn: #b9770e; --warn-tint: #fdf2e0;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--card); color: var(--ink); font: 15px/1.45 var(--sans); padding: 12px 14px; overflow: hidden; text-align: left; }
+h1, h2, h3 { color: var(--navy); margin: 0 0 8px; font-size: 1.05rem; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.bar label { color: var(--muted); font-size: 13px; }
+button, select, input { font: inherit; }
+button { background: var(--card); color: var(--navy); border: 1.5px solid var(--navy); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button.on, button:hover { background: var(--navy); color: #fff; }
+button.warn { border-color: var(--orange); color: var(--orange); } button.warn.on { background: var(--orange); color: #fff; }
+select { border: 1.5px solid var(--line); border-radius: 6px; padding: 3px 6px; background: var(--card); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.chip { display: inline-block; font-size: 13px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: var(--navy-tint); color: var(--navy); margin-right: 4px; }
+.chip.mail { background: #efe7fb; color: #5b3a99; } .chip.onedrive { background: #e3f2fb; color: #0f5f8c; }
+.chip.ki { background: var(--orange-tint); color: #a24b10; } .chip.log { background: #eee; color: #444; }
+.chip.jira { background: #e6f0ff; color: #1d4fa8; } .chip.policy, .chip.sop, .chip.design, .chip.config { background: var(--good-tint); color: var(--good); }
+.good { color: var(--good); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: .85em; }
+.synthetic { position: fixed; right: 10px; bottom: 6px; font-size: 13px; color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Query transformation</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .top h1 { margin: 0 8px 0 0; white-space: nowrap; }
+  .top .sp { flex: 1; }
+  .top button { font-size: 14px; padding: 3px 9px; }
+  .qrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; height: 104px; }
+  .qbox { border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; background: var(--paper); overflow: hidden; }
+  .prev { font-size: 13px; color: var(--muted); margin-bottom: 3px; line-height: 1.35; }
+  .prev b { color: var(--ink); font-weight: 600; }
+  .ask { font-size: 18px; font-weight: 700; color: var(--navy-deep); }
+  .lab { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; height: 412px; }
+  .card { cursor: pointer; overflow: hidden; display: flex; flex-direction: column; gap: 4px; border-width: 2px; }
+  .card.hit { border-color: var(--good); }
+  .card.miss { border-color: var(--bad); }
+  .card.same { border-color: var(--line); }
+  .card h3 { margin: 0; font-size: 16px; display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+  .card h3 .what { flex: 1; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+  .card .what { font-size: 13px; color: var(--muted); }
+  .tq { font-family: var(--mono); font-size: 13px; background: var(--navy-tint); color: var(--navy-deep); border-radius: 6px; padding: 4px 8px; line-height: 1.45; }
+  .tq.hyde { background: var(--orange-tint); color: #7a3608; }
+  .tq div + div { border-top: 1px dashed rgba(19,79,124,.25); margin-top: 2px; padding-top: 2px; }
+  .res { display: flex; flex-direction: column; gap: 2px; }
+  .it { display: grid; grid-template-columns: 18px 150px 1fr; gap: 6px; font-size: 13px; align-items: center; padding: 1px 4px; border-radius: 5px; }
+  .it .rk { color: var(--muted); font-weight: 700; text-align: right; }
+  .it .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it .tx { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it.right { background: var(--good-tint); }
+  .it.right .nm { color: var(--good); }
+  .it.right .nm::before { content: '✓ '; }
+  .badge { font-size: 13px; font-weight: 700; border-radius: 10px; padding: 1px 9px; }
+  .badge.hit { background: var(--good-tint); color: var(--good); }
+  .badge.miss { background: var(--bad-tint); color: var(--bad); }
+  .badge.same { background: var(--zebra); color: var(--muted); }
+  .hidden { color: var(--muted); font-size: 15px; margin: auto; text-align: center; }
+  .note { font-size: 13px; color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Query transformation</h1>
+  <span id="qbtns"></span>
+  <span class="sp"></span>
+  <button id="all">Reveal all</button>
+  <button id="hide">Hide all</button>
+</div>
+<div class="qrow">
+  <div class="qbox" id="qbox"></div>
+  <div class="qbox" id="raw"></div>
+</div>
+<div class="cards" id="cards"></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script src="search.js"></script>
+<script>
+// Precomputed transformations (content-src 4.6) and the top 3 each one retrieves.
+const QS = [
+  { label: 'Chatty', ask: 'hey that search thing for Fabrikam is broken again??', right: ['c20', 'c30'], raw: ['c15', 'c02', 'c25'],
+    t: {
+      rewrite: { q: ['Content Hub search returns nothing tenant Fabrikam Legal'], top: ['c20', 'c30', 'c12'] },
+      conv: { q: ['(no earlier turn, no "it" to resolve: query unchanged)'], top: ['c15', 'c02', 'c25'], same: true },
+      multi: { q: ['Content Hub search returns nothing for one tenant', 'Fabrikam Legal earlier tickets search'], top: ['c20', 'c30', 'c13'] },
+      hyde: { q: ['Search returning nothing for one tenant usually means the index job for that tenant\'s folder stalled; restart the index worker and re-queue the folder.'], top: ['c20', 'c14', 'c13'] },
+    } },
+  { label: 'Follow-up', ask: 'and why was it dropped?', right: ['c07', 'c09'], raw: ['c26', 'c17', 'c22'],
+    prev: [['Sam', 'What did vendor A show in the demo?'], ['Assistant', 'Its collector parses logs in vendor A\'s cloud [minutes 2026-09-17].']],
+    t: {
+      rewrite: { q: ['reason it was dropped'], top: ['c26', 'c17', 'c07'], note: 'Cleaner words, but still no idea what "it" is.' },
+      conv: { q: ['why was vendor A dropped from the log platform POC'], top: ['c07', 'c09', 'c03'] },
+      multi: { q: ['vendor A dropped reason', 'vendor A on-premise parser answer'], top: ['c07', 'c09', 'c04'], note: 'Needs the conversation too, to know "it" = vendor A.' },
+      hyde: { q: ['Vendor A was dropped from the POC because its product did not meet our requirements.'], top: ['c07', 'c19', 'c02'] },
+    } },
+  { label: 'Compare', ask: 'Compare vendor A and B', right: ['c07', 'c05'], raw: ['c01', 'c03', 'c05'],
+    t: {
+      rewrite: { q: ['vendor A vendor B comparison on-premise pricing'], top: ['c05', 'c01', 'c03'], note: 'One query, two topics: vendor A\'s decisive passage is crowded out.' },
+      conv: { q: ['(no earlier turn: query unchanged)'], top: ['c01', 'c03', 'c05'], same: true },
+      multi: { q: ['vendor A on-premise', 'vendor B on-premise', 'vendor B pricing'], top: ['c07', 'c05', 'c29'] },
+      hyde: { q: ['Vendor A parses logs in its cloud and has no on-premise parser; vendor B runs fully on-premise and is priced per GB per day.'], top: ['c05', 'c03', 'c07'] },
+    } },
+  { label: 'q5', ask: 'search returns nothing for one tenant on Content Hub', right: ['c20', 'c14'], raw: ['c20', 'c12', 'c13'],
+    t: {
+      rewrite: { q: ['Content Hub search returns nothing one tenant'], top: ['c20', 'c12', 'c13'], note: 'Already a good search query: nothing to gain.' },
+      conv: { q: ['(no earlier turn: query unchanged)'], top: ['c20', 'c12', 'c13'], same: true },
+      multi: { q: ['Content Hub index queue stalled for a tenant', 'index worker restart re-queue folder'], top: ['c13', 'c14', 'c20'] },
+      hyde: { q: ['Restart the index worker and re-index the tenant folder.'], top: ['c14', 'c20', 'c25'], note: 'The draft uses the fix\'s own wording, so it matches the fix.' },
+    } },
+];
+const TECH = [
+  ['rewrite', 'Rewrite', 'turns a chatty question into a search query'],
+  ['conv', 'Use the conversation', 'resolves "it" from earlier turns'],
+  ['multi', 'Multi-query', 'splits the question into several searches, merges results'],
+  ['hyde', 'HyDE', 'drafts an answer, searches with the draft'],
+];
+const state = { qi: 0, shown: [false, false, false, false] };
+
+const item = (id, i, right) => { const c = Demo.chunk(id); return `<div class="it ${right.includes(id) ? 'right' : ''}"><span class="rk">${i + 1}</span><span class="nm">${Demo.esc(Search.short(c))}</span><span class="tx">${Demo.esc(c.text)}</span></div>`; };
+
+function render(s) {
+  const Q = QS[s.qi];
+  document.getElementById('qbtns').innerHTML = QS.map((q, i) => `<button data-q="${i}" class="${s.qi === i ? 'on' : ''}">${q.label}</button>`).join(' ');
+  document.getElementById('qbox').innerHTML = `<div class="lab">Sam asks</div>` +
+    (Q.prev ? Q.prev.map(([w, t]) => `<div class="prev"><b>${w}:</b> ${Demo.esc(t)}</div>`).join('') : '') +
+    `<div class="ask">"${Demo.esc(Q.ask)}"</div>`;
+  const rawHit = Q.raw.some(id => Q.right.includes(id));
+  document.getElementById('raw').innerHTML = `<div class="lab">Raw question searched as typed · <span class="${rawHit ? 'good' : 'bad'}">${rawHit ? 'finds part of it' : 'misses the right chunk'}</span></div><div class="res">${Q.raw.map((id, i) => item(id, i, Q.right)).join('')}</div>`;
+  document.getElementById('cards').innerHTML = TECH.map(([k, name, what], i) => {
+    const t = Q.t[k];
+    if (!s.shown[i]) return `<div class="card" data-c="${i}"><h3>${name}<span class="what">${what}</span></h3><div class="hidden">click to transform</div></div>`;
+    const hits = t.top.filter(id => Q.right.includes(id)).length, rawHits = Q.raw.filter(id => Q.right.includes(id)).length;
+    const cls = t.same ? 'same' : hits > rawHits ? 'hit' : hits === rawHits && hits > 0 ? 'same' : hits ? 'same' : 'miss';
+    const badge = t.same ? 'no change' : hits >= Q.right.length && hits > rawHits ? '✓ finds the right chunk' : hits > rawHits ? `better: ${hits} of ${Q.right.length}` : hits === 0 ? '✗ still misses' : 'no better than raw';
+    return `<div class="card ${cls}" data-c="${i}"><h3>${name}<span class="what">${what}</span><span class="badge ${cls}">${badge}</span></h3>
+      <div class="tq ${k === 'hyde' ? 'hyde' : ''}">${k === 'hyde' ? '<b>draft:</b> ' : ''}${t.q.map(x => `<div>${Demo.esc(x)}</div>`).join('')}</div>
+      <div class="res">${t.top.map((id, j) => item(id, j, Q.right)).join('')}</div>${t.note ? `<div class="note">${Demo.esc(t.note)}</div>` : ''}</div>`;
+  }).join('');
+}
+
+const set = Demo.sync('query-transform', state, render);
+document.addEventListener('click', e => {
+  const q = e.target.closest('[data-q]'); if (q) return set({ qi: +q.dataset.q, shown: [false, false, false, false] });
+  const c = e.target.closest('[data-c]'); if (c) { const sh = state.shown.slice(); sh[+c.dataset.c] = !sh[+c.dataset.c]; set({ shown: sh }); }
+});
+document.getElementById('all').onclick = () => set({ shown: [true, true, true, true] });
+document.getElementById('hide').onclick = () => set({ shown: [false, false, false, false] });
+Demo.label();
+</script>
+</body>
+</html>

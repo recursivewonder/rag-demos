@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Chunker</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .wrap { display: grid; grid-template-columns: 258px 1fr; gap: 12px; height: 570px; }
+  .side { display: flex; flex-direction: column; gap: 8px; }
+  .side h1 { margin: 0; }
+  .grp { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 5px; }
+  .btns button { padding: 3px 8px; font-size: 14px; }
+  .slider { display: grid; grid-template-columns: 70px 1fr 54px; align-items: center; gap: 6px; font-size: 14px; }
+  .slider input { width: 100%; }
+  .slider.dim { opacity: .35; }
+  .stats { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; background: var(--paper); }
+  .stats .big { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1.1; }
+  .stats .cut { color: var(--bad); font-weight: 700; }
+  .probe { border-radius: 8px; padding: 8px 10px; font-size: 14px; border-left: 5px solid var(--navy); background: var(--navy-tint); }
+  .probe.yes { border-color: var(--good); background: var(--good-tint); }
+  .probe.no { border-color: var(--bad); background: var(--bad-tint); }
+  .doc { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow: hidden; font-size: 15px; line-height: 1.75; background: var(--card); }
+  .doc .dochead { font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: 4px; padding-bottom: 3px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .doc .dochead button { font-size: 13px; padding: 1px 8px; }
+  .doc.hier { line-height: 1.5; }
+  .doc.hier .u.h { margin-top: 0; }
+  .u { margin: 0; }
+  .u.h { font-weight: 700; color: var(--navy); margin-top: 3px; }
+  .u.title { font-weight: 700; font-size: 15px; color: var(--navy-deep); }
+  .u.row { font-family: var(--mono); font-size: 13px; line-height: 1.7; margin-bottom: 3px; }
+  .u.hdr { font-family: var(--mono); font-size: 13px; color: var(--muted); font-weight: 700; }
+  .u.quote { color: #5b3a99; }
+  .u.sig { color: var(--muted); font-style: italic; }
+  .w { padding: 2px 0; border-radius: 2px; }
+  .cn { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; background: var(--navy); border-radius: 3px; padding: 0 3px; margin-right: 2px; line-height: 15px; vertical-align: 1px; }
+  .x { color: var(--bad); font-weight: 700; font-size: 15px; margin: 0 1px; }
+  .parent { border: 2px solid var(--navy); border-radius: 8px; padding: 1px 6px 2px; margin: 8px 0 2px; position: relative; }
+  .parent .pl { position: absolute; right: 8px; top: -10px; line-height: 16px; font-size: 13px; font-weight: 700; color: var(--navy); background: var(--card); padding: 0 4px; }
+  .legend { font-size: 13px; color: var(--muted); }
+  .find { outline: 2px solid var(--orange); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="side">
+    <h1>Chunker</h1>
+    <div class="grp">Document</div>
+    <div class="btns" id="docs"></div>
+    <div class="grp">Strategy</div>
+    <div class="btns" id="strats"></div>
+    <div class="slider" id="sizeRow"><span>Size</span><input type="range" id="size" min="20" max="200" step="5"><b id="sizeV"></b></div>
+    <div class="slider" id="ovRow"><span>Overlap</span><input type="range" id="ov" min="0" max="40" step="5"><b id="ovV"></b></div>
+    <div class="stats" id="stats"></div>
+    <div class="probe" id="probe"></div>
+  </div>
+  <div class="doc" id="doc"></div>
+</div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script>
+// Units: one line of the source. type: title | h (heading) | step | row | hdr | para | quote | sig. topic: hand-marked topic for "semantic".
+// sec: section index for "hierarchical" and "recursive".
+const DOCS = {
+  sop: { name: 'SOP-CH-03', head: 'Content Hub library · SOP-CH-03 "Search issue triage" · owner: Content Hub sub-team · revised 2026-05-12',
+    probe: ['re-queue', 'search returns nothing'],
+    units: [
+      ['title', 'SOP-CH-03 Search issue triage', 1, 0],
+      ['h', '1 Scope', 1, 1],
+      ['para', 'Use this SOP when users report that search returns nothing, or too little, on Content Hub. It covers all tenants. It does not cover the Legacy Archive web viewer.', 1, 1],
+      ['h', '2 First checks', 2, 2],
+      ['step', '2.1 Ask whether it is one tenant or all tenants.', 2, 2],
+      ['step', '2.2 Ask whether it is one document or all documents.', 2, 2],
+      ['step', '2.3 Note the tenant and a sample document ID.', 2, 2],
+      ['h', '3 Index checks', 3, 3],
+      ['step', '3.1 Open the index queue for the tenant.', 3, 3],
+      ['step', '3.2 If items are waiting for more than one hour, the index job for that tenant is stalled.', 3, 3],
+      ['step', '3.3 Check the index worker status next.', 4, 3],
+      ['h', '4 Index workers', 4, 4],
+      ['step', '4.1 Restart the index worker and re-queue the folder.', 4, 4],
+      ['step', '4.2 Wait 15 minutes, then search for the sample document ID again.', 5, 4],
+      ['h', '5 Escalation', 5, 5],
+      ['step', '5.1 If search still returns nothing after a re-index, raise a ticket to the Content Hub sub-team lead.', 5, 5],
+      ['step', '5.2 Attach the tenant, the document ID and a screenshot of the index queue.', 5, 5],
+    ] },
+  ki: { name: 'known-issues.xlsx', head: "known-issues.xlsx · one engineer's sheet · exported as text, one line per row",
+    probe: ['re-queue', 'search returns nothing'],
+    units: [
+      ['hdr', 'ID | Platform | Symptom | Cause | Check | Fix', 0, 0],
+      ['row', 'KI-014 | Content Hub | Search returns nothing for one tenant | Index job for that tenant\'s folder stalled | Index queue for the tenant; index worker status | Restart the index worker, re-queue the folder', 1, 1],
+      ['row', 'KI-022 | Content Hub | Alert mail: transfer timeout for one document ID | Target busy during the night batch | transfer.log and index.log for the ID | Reprocess the ID after 06:00', 2, 2],
+      ['row', 'KI-031 | Legacy Archive | Web viewer fails to open documents, API works | Web viewer session limit reached | Session count on the viewer | Recycle the viewer\'s app pool', 3, 3],
+      ['row', 'KI-040 | Content Hub | File not found for a document that search lists | Document moved during migration, index points to the old path | index.log for the document ID | Re-index the document', 4, 4],
+      ['row', 'KI-047 | Capture | Batch stuck at the remote site | Export to target failed and was not retried | Batch state at the remote site | Retry the export', 5, 5],
+    ] },
+  mail: { name: 'vendor A thread', head: 'mail · From: vendor A · 2026-09-30 · "Re: Re: Re: on-prem parser?"',
+    probe: ['roadmap', 'on-premise parser'],
+    units: [
+      ['para', 'Hi Sam, thanks for your patience. Unfortunately an on-premise parser is not on our roadmap before next year. Parsing runs in our cloud service only.', 1, 1],
+      ['sig', 'Best regards, the vendor A team. This e-mail and any attachments are confidential and intended only for the addressee.', 2, 1],
+      ['quote', '> On 2026-09-24 Sam wrote: Any news? Could you confirm whether an on-premise parser exists? Kind regards, Sam, Contoso Archive Services', 3, 2],
+      ['quote', '>> On 2026-09-19 vendor A wrote: We are checking with product management whether an on-premise parser exists. Best regards, the vendor A team.', 3, 3],
+      ['quote', '>>> On 2026-09-17 Sam wrote: Could you confirm whether an on-premise parser exists? Kind regards, Sam, Contoso Archive Services', 3, 4],
+      ['quote', '>>>> On 2026-09-17 Sam wrote: Could you confirm whether an on-premise parser exists? Kind regards, Sam, Contoso Archive Services', 3, 5],
+    ] },
+};
+const STRATS = [['fixed', 'Fixed'], ['recursive', 'Recursive'], ['sentence', 'Sentence'], ['semantic', 'Semantic'], ['hier', 'Hierarchical']];
+const COLORS = ['#d7e7f6', '#fde0c8', '#d6f0df', '#ebdcf8', '#f9f1b9', '#d5f0f0'];
+const PRESETS = {
+  'sop-fixed': { doc: 'sop', strat: 'fixed', size: 45, ov: 0 },
+  'ki-fixed': { doc: 'ki', strat: 'fixed', size: 40, ov: 0 },
+  'mail': { doc: 'mail', strat: 'fixed', size: 40, ov: 0, strip: false },
+};
+const state = Object.assign({ doc: 'sop', strat: 'recursive', size: 60, ov: 0, strip: false }, PRESETS[Demo.param('preset', '')] || {});
+
+// Flatten a document into words with unit and sentence indexes.
+function flatten(d, strip) {
+  const words = [], units = d.units.filter(u => !(strip && (u[0] === 'quote' || u[0] === 'sig')));
+  let sent = 0;
+  units.forEach((u, ui) => {
+    const sentences = u[1].split(/(?<=[.?!])\s+(?=\S)/);
+    sentences.forEach(s => { s.split(/\s+/).filter(Boolean).forEach(w => words.push({ w, ui, sent, type: u[0], topic: u[2], sec: u[3] })); sent++; });
+  });
+  return { words, units };
+}
+
+// Each strategy returns ranges [start, end) over words; hierarchical also returns parents.
+function chunk(W, s) {
+  const N = W.length, size = s.size, ranges = [];
+  const groups = key => { const g = []; let st = 0; for (let i = 1; i <= N; i++) if (i === N || W[i][key] !== W[i - 1][key]) { g.push([st, i]); st = i; } return g; };
+  const splitBySize = ([a, b]) => { // recursive: unit, then sentence, then words
+    if (b - a <= size) return [[a, b]];
+    const out = []; let st = a;
+    for (const [x, y] of groups('sent').filter(([x, y]) => x >= a && y <= b)) {
+      if (y - st > size && x > st) { out.push([st, x]); st = x; }
+      while (y - st > size) { out.push([st, st + size]); st += size; }
+    }
+    if (st < b) out.push([st, b]);
+    return out;
+  };
+  if (s.strat === 'fixed') {
+    const step = Math.max(5, Math.round(size * (1 - s.ov / 100)));
+    for (let a = 0; a < N; a += step) { ranges.push([a, Math.min(N, a + size)]); if (a + size >= N) break; }
+    return { ranges };
+  }
+  if (s.strat === 'sentence') {
+    const sents = groups('sent'); let cur = null;
+    sents.forEach(([a, b], i) => {
+      if (cur && b - cur[0] > size) { ranges.push(cur); cur = [s.ov > 0 && i > 0 ? sents[i - 1][0] : a, b]; }
+      else cur = cur ? [cur[0], b] : [a, b];
+    });
+    if (cur) ranges.push(cur);
+    return { ranges };
+  }
+  if (s.strat === 'semantic') return { ranges: groups('topic') };
+  if (s.strat === 'recursive') {
+    const secs = groups('sec');
+    secs.forEach(sec => {
+      if (sec[1] - sec[0] <= size) { ranges.push(sec); return; }
+      // section too big: pack whole units, split a unit only if it alone is too big
+      let cur = null;
+      groups('ui').filter(([x, y]) => x >= sec[0] && y <= sec[1]).forEach(u => {
+        if (cur && u[1] - cur[0] > size) { ranges.push(cur); cur = null; }
+        if (u[1] - u[0] > size) { splitBySize(u).forEach(r => ranges.push(r)); return; }
+        cur = cur ? [cur[0], u[1]] : u;
+      });
+      if (cur) ranges.push(cur);
+    });
+    return { ranges };
+  }
+  // hierarchical: parents = sections; children = units (paragraph / step / row), split further by size
+  const parents = groups('sec');
+  const kids = [];
+  groups('ui').forEach(u => { // a heading joins the paragraph or step after it
+    const prev = kids[kids.length - 1];
+    if (prev && W[prev[0]].type === 'h' && prev[1] === u[0] && W[u[0]].sec === W[prev[0]].sec && prev.single) { prev[1] = u[1]; prev.single = false; }
+    else { const k = [u[0], u[1]]; k.single = true; kids.push(k); }
+  });
+  kids.forEach(u => splitBySize([u[0], u[1]]).forEach(r => ranges.push(r)));
+  return { ranges, parents };
+}
+
+function cutKind(W, p) { // what a boundary before word p splits
+  if (p <= 0 || p >= W.length) return null;
+  const a = W[p - 1], b = W[p];
+  if (a.ui === b.ui && a.type === 'step') return 'step';
+  if (a.ui === b.ui && a.type === 'row') return 'row';
+  if (a.sent === b.sent) return 'sentence';
+  return null;
+}
+
+function render(s) {
+  const d = DOCS[s.doc];
+  document.getElementById('docs').innerHTML = Object.entries(DOCS).map(([k, v]) => `<button data-doc="${k}" class="${s.doc === k ? 'on' : ''}">${v.name}</button>`).join('');
+  document.getElementById('strats').innerHTML = STRATS.map(([k, v]) => `<button data-strat="${k}" class="${s.strat === k ? 'on' : ''}">${v}</button>`).join('');
+  document.getElementById('size').value = s.size; document.getElementById('sizeV').textContent = s.size + ' w';
+  document.getElementById('ov').value = s.ov; document.getElementById('ovV').textContent = s.ov + '%';
+  document.getElementById('sizeRow').classList.toggle('dim', s.strat === 'semantic');
+  document.getElementById('ovRow').classList.toggle('dim', !(s.strat === 'fixed' || s.strat === 'sentence'));
+  document.getElementById('doc').classList.toggle('hier', s.strat === 'hier');
+
+  const { words: W, units } = flatten(d, s.doc === 'mail' && s.strip);
+  const { ranges, parents } = chunk(W, s);
+  // per word: which chunks contain it
+  const owners = W.map(() => []);
+  ranges.forEach(([a, b], ci) => { for (let i = a; i < b; i++) owners[i].push(ci); });
+  // boundaries
+  const cuts = {}; const counts = { step: 0, row: 0, sentence: 0 };
+  ranges.forEach(([a, b], ci) => {
+    [a, b].forEach(p => { const k = cutKind(W, p); if (k && !cuts[p]) { cuts[p] = k; counts[k]++; } });
+  });
+  const starts = {}; ranges.forEach(([a], ci) => { (starts[a] = starts[a] || []).push(ci); });
+  // probe
+  const text = (a, b) => W.slice(a, b).map(x => x.w).join(' ').toLowerCase();
+  const pi = ranges.findIndex(([a, b]) => text(a, b).includes(d.probe[0]));
+  const parentOf = i => parents && parents.findIndex(([a, b]) => i >= a && i < b);
+
+  // render words grouped by unit
+  let h = `<div class="dochead"><span>${Demo.esc(d.head)}</span>${s.doc === 'mail' ? `<button id="strip" class="${s.strip ? 'on' : ''}">${s.strip ? '✓ ' : ''}Strip quotes + signature</button>` : ''}</div>`;
+  let curParent = -1;
+  units.forEach((u, ui) => {
+    const ws = W.map((x, i) => [x, i]).filter(([x]) => x.ui === ui);
+    if (!ws.length) return;
+    const p = parents ? parentOf(ws[0][1]) : -1;
+    if (parents && p !== curParent) { if (curParent >= 0) h += '</div>'; h += `<div class="parent"><span class="pl">parent ${p + 1}</span>`; curParent = p; }
+    h += `<p class="u ${u[0]}">` + ws.map(([x, i]) => {
+      let pre = '';
+      if (cuts[i]) pre += `<span class="x" title="splits a ${cuts[i]}">✂</span>`;
+      (starts[i] || []).forEach(ci => { pre += `<span class="cn">${parents ? 'c' : '#'}${ci + 1}</span>`; });
+      const o = owners[i];
+      let bg = 'transparent';
+      if (o.length === 1) bg = COLORS[o[0] % COLORS.length];
+      else if (o.length > 1) bg = `linear-gradient(${COLORS[o[0] % COLORS.length]} 50%, ${COLORS[o[1] % COLORS.length]} 50%)`;
+      const find = pi >= 0 && o.includes(pi) && x.w.toLowerCase().includes(d.probe[0]) ? ' find' : '';
+      return pre + `<span class="w${find}" style="background:${bg}">${Demo.esc(x.w)} </span>`;
+    }).join('') + '</p>';
+  });
+  if (parents && curParent >= 0) h += '</div>';
+  document.getElementById('doc').innerHTML = h;
+
+  const n = ranges.length, avg = Math.round(ranges.reduce((t, [a, b]) => t + b - a, 0) / n);
+  const total = counts.step + counts.row + counts.sentence;
+  const parts = [counts.step && `${counts.step} step${counts.step > 1 ? 's' : ''}`, counts.row && `${counts.row} row${counts.row > 1 ? 's' : ''}`, counts.sentence && `${counts.sentence} sentence${counts.sentence > 1 ? 's' : ''}`].filter(Boolean).join(', ');
+  // duplicate chunks (same text) for the mail echo
+  const seen = {}; let dups = 0;
+  ranges.forEach(([a, b]) => { const t = text(a, b).replace(/^[>\s]+|on \S+ \S+ wrote:/g, ''); if (seen[t]) dups++; seen[t] = 1; });
+  document.getElementById('stats').innerHTML =
+    `<span class="big">${n}</span> ${parents ? `children in ${parents.length} parents` : 'chunks'} · avg ${avg} words<br>` +
+    (total ? `<span class="cut">✂ ${total} bad cut${total > 1 ? 's' : ''}</span>: ${parts}` : '<span class="good">✓ no step, row or sentence cut</span>') +
+    (total ? '<br><span class="muted">✂ = a step, row or sentence cut in two</span>' : '') +
+    (s.doc === 'mail' ? `<br>${s.strip ? 'quotes removed' : `${units.filter(u => u[0] === 'quote').length} quoted copies`}${dups ? `, ${dups} duplicate chunk${dups > 1 ? 's' : ''}` : ''}` : '') +
+    (s.strat === 'semantic' ? '<br><span class="muted">cut where the topic shifts; size ignored</span>' : '') +
+    (s.strat === 'hier' ? '<br><span class="muted">search the child, return the parent</span>' : '');
+
+  const pr = document.getElementById('probe');
+  if (pi < 0) { pr.className = 'probe'; pr.innerHTML = `"${d.probe[0]}" is not in this text.`; return; }
+  const ctext = parents ? text(...parents[parentOf(ranges[pi][0])]) : text(...ranges[pi]);
+  const has = ctext.includes(d.probe[1]);
+  pr.className = 'probe ' + (has ? 'yes' : 'no');
+  pr.innerHTML = `The ${parents ? 'parent of the chunk' : 'chunk'} with "<b>${d.probe[0]}</b>" (${parents ? 'c' : '#'}${pi + 1}) ${has ? '<b>also contains</b>' : '<b>does not contain</b>'} "${d.probe[1]}". ${s.doc === 'mail' ? '' : has ? 'The symptom finds the fix.' : 'The symptom misses the fix.'}`;
+}
+
+const set = Demo.sync('chunker', state, render);
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.doc) set({ doc: b.dataset.doc });
+  if (b.dataset.strat) set({ strat: b.dataset.strat });
+  if (b.id === 'strip') set({ strip: !state.strip });
+});
+document.getElementById('size').oninput = e => set({ size: +e.target.value });
+document.getElementById('ov').oninput = e => set({ ov: +e.target.value });
+Demo.label();
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Contextual retrieval</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .top h1 { margin: 0; }
+  .top .sp { flex: 1; }
+  .pair { display: grid; grid-template-columns: 1fr 60px 1fr; gap: 0; align-items: stretch; margin-bottom: 14px; }
+  .chunkbox { border: 2px solid var(--line); border-radius: 10px; padding: 10px 14px; height: 212px; background: var(--paper); }
+  .chunkbox h3 { font-size: 14px; margin: 0 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .chunkbox .body { font-size: 18px; line-height: 1.5; }
+  .chunkbox.ctx { border-color: var(--navy); background: var(--card); }
+  .prefix { color: var(--navy); background: var(--navy-tint); border-radius: 4px; padding: 0 3px; }
+  .caret { display: inline-block; width: 2px; height: 1.1em; background: var(--orange); vertical-align: -3px; animation: blink .8s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .mid { display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--navy); }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .qs { display: grid; gap: 10px; }
+  .q { display: grid; grid-template-columns: 330px 1fr; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .q .qt { font-size: 16px; font-weight: 600; color: var(--ink); }
+  .q .qt small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+  .bars { position: relative; }
+  .brow { display: grid; grid-template-columns: 92px 1fr 46px; align-items: center; gap: 8px; font-size: 13px; height: 22px; }
+  .track { position: relative; height: 14px; background: var(--zebra); border-radius: 7px; }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; transition: width .8s ease; }
+  .fill.bare { background: #9aa6b2; }
+  .fill.ctx { background: var(--navy); }
+  .cut { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--orange); }
+  .val { font-weight: 700; text-align: right; }
+  .verdict { font-size: 13px; font-weight: 700; margin-left: 100px; }
+  .legend { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; gap: 18px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Contextual retrieval</h1>
+  <span class="muted">prefix each chunk with where it sits, before embedding</span>
+  <span class="sp"></span>
+  <button id="write" class="warn">✎ Write the context</button>
+  <button id="reset">Reset</button>
+</div>
+<div class="pair">
+  <div class="chunkbox"><h3>Bare chunk</h3><div class="body" id="bare"></div><div class="meta">SOP-CH-03 §4 · as cut by the chunker</div></div>
+  <div class="mid">➜</div>
+  <div class="chunkbox ctx"><h3>Contextual chunk</h3><div class="body" id="ctx"></div><div class="meta" id="ctxmeta"></div></div>
+</div>
+<div class="qs" id="qs"></div>
+<div class="legend"><span><i style="background:#9aa6b2"></i>bare chunk</span><span><i style="background:var(--navy)"></i>with context</span><span><i style="border-top:2px dashed var(--orange);height:0"></i>top-5 cut-off: below the line it isn't retrieved</span><span>Illustrative similarity scores</span></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script>
+const BARE = Demo.chunk('c14').text;
+const PREFIX = 'From SOP-CH-03 "Search issue triage", section 4 Index workers: the fix when search returns nothing for one tenant on Content Hub. ';
+const CUTOFF = 0.70;
+const QS = [
+  { t: QUERIES.find(q => q.id === 'q5').text, tag: 'q5 · the symptom', bare: 0.41, ctx: 0.83 },
+  { t: 'how do I fix a stalled index worker?', tag: 'the fix, in other words', bare: 0.58, ctx: 0.79 },
+  { t: QUERIES.find(q => q.id === 'q1').text, tag: 'q1 · unrelated', bare: 0.08, ctx: 0.12 },
+];
+const state = { written: false };
+let shown = null, timer = null; // local animation state (not synced)
+
+function render(s) {
+  document.getElementById('bare').textContent = BARE;
+  document.getElementById('write').disabled = s.written;
+  const ctx = document.getElementById('ctx');
+  if (!s.written) { clearInterval(timer); shown = null; ctx.innerHTML = `<span class="muted">${Demo.esc(BARE)}</span>`; }
+  else if (shown === null) { // animate once, in every window that receives the change
+    shown = 0; clearInterval(timer);
+    timer = setInterval(() => {
+      shown = Math.min(PREFIX.length, shown + 2);
+      paint();
+      if (shown >= PREFIX.length) { clearInterval(timer); bars(s, true); }
+    }, 22);
+  }
+  paint();
+  bars(s, s.written && shown >= PREFIX.length);
+  document.getElementById('ctxmeta').textContent = s.written ? 'prefix written once per chunk at ingestion by a model; paid once, not per question' : 'press "Write the context"';
+}
+function paint() {
+  if (shown === null) return;
+  const done = shown >= PREFIX.length;
+  document.getElementById('ctx').innerHTML = `<span class="prefix">${Demo.esc(PREFIX.slice(0, shown))}</span>${done ? '' : '<span class="caret"></span>'}${done ? Demo.esc(BARE) : ''}`;
+}
+function bars(s, showCtx) {
+  document.getElementById('qs').innerHTML = QS.map(q => {
+    const win = showCtx && q.ctx >= CUTOFF && q.bare < CUTOFF;
+    return `<div class="q"><div class="qt">"${Demo.esc(q.t)}"<small>${q.tag}</small></div><div class="bars">
+      <div class="brow"><span>bare</span><div class="track"><div class="fill bare" style="width:0" data-w="${q.bare * 100}%"></div><div class="cut" style="left:${CUTOFF * 100}%"></div></div><span class="val">${q.bare.toFixed(2)}</span></div>
+      <div class="brow"><span>with context</span><div class="track"><div class="fill ctx" style="width:0" data-w="${showCtx ? q.ctx * 100 : 0}%"></div><div class="cut" style="left:${CUTOFF * 100}%"></div></div><span class="val">${showCtx ? q.ctx.toFixed(2) : '–'}</span></div>
+      ${showCtx ? `<div class="verdict ${win ? 'good' : q.ctx < 0.3 ? 'muted' : 'good'}">${win ? '✓ now retrieved: the chunk says what it fixes' : q.ctx < 0.3 ? 'stays low: context adds meaning, not false matches' : '✓ higher: "index worker" now has a symptom attached'}</div>` : ''}
+    </div></div>`;
+  }).join('');
+  setTimeout(() => document.querySelectorAll('.fill').forEach(f => { f.style.width = f.dataset.w; }), 30);
+}
+
+const set = Demo.sync('contextual', state, render);
+document.getElementById('write').onclick = () => set({ written: true });
+document.getElementById('reset').onclick = () => set({ written: false });
+Demo.label();
+</script>
+</body>
+</html>

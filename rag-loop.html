@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>RAG loop</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .top h1 { margin: 0 12px 0 0; }
+  .top .sp { flex: 1; }
+  .pipe { display: grid; grid-template-columns: 1fr 34px 1fr 34px 1fr 34px 1fr; align-items: center; margin-bottom: 12px; }
+  .stage { border: 2px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--paper); color: var(--muted); transition: all .25s; min-height: 72px; }
+  .stage b { display: block; font-size: 17px; color: inherit; }
+  .stage small { font-size: 13px; }
+  .stage.done { border-color: var(--navy); color: var(--navy); background: var(--navy-tint); }
+  .stage.now { border-color: var(--orange); color: #8a3d0b; background: var(--orange-tint); box-shadow: 0 0 0 4px rgba(244,116,33,.18); }
+  .stage.dead { border-color: var(--bad); color: var(--bad); background: var(--bad-tint); border-style: dashed; }
+  .arrow { text-align: center; color: var(--line); font-size: 24px; }
+  .arrow.done { color: var(--navy); }
+  .panel { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; height: 410px; background: var(--card); position: relative; }
+  .panel h2 { display: flex; gap: 10px; align-items: baseline; }
+  .coord { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .bubble { display: inline-block; background: var(--navy); color: #fff; border-radius: 16px 16px 16px 4px; padding: 12px 18px; font-size: 22px; margin: 18px 0 10px; }
+  .hit { display: grid; grid-template-columns: 30px 1fr 170px; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+  .hit .rk { font-weight: 700; color: var(--navy); font-size: 18px; text-align: center; }
+  .hit .txt { font-size: 14px; }
+  .meter { height: 12px; background: var(--zebra); border-radius: 6px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--navy); }
+  .score { font-size: 13px; color: var(--muted); }
+  .empty { border: 2px dashed var(--bad); color: var(--bad); border-radius: 10px; padding: 30px; text-align: center; font-size: 18px; background: var(--bad-tint); margin-top: 20px; }
+  .prompt { font-family: var(--mono); font-size: 13px; line-height: 1.45; }
+  .slot { border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; border-left: 5px solid; }
+  .slot .lab { font-family: var(--sans); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; }
+  .slot.sys { background: var(--navy-tint); border-color: var(--navy); }
+  .slot.psg { background: var(--orange-tint); border-color: var(--orange); }
+  .slot.psg.none { background: var(--bad-tint); border-color: var(--bad); color: var(--bad); }
+  .slot.q { background: var(--good-tint); border-color: var(--good); }
+  .answer { font-size: 19px; line-height: 1.6; margin-top: 14px; padding: 14px 18px; border-radius: 10px; background: var(--good-tint); border-left: 6px solid var(--good); }
+  .answer.badans { background: var(--bad-tint); border-color: var(--bad); color: var(--bad); }
+  .cite { display: inline-block; font-size: 13px; font-weight: 700; background: var(--navy); color: #fff; border-radius: 4px; padding: 0 6px; margin: 0 2px; vertical-align: 2px; }
+  .nosrc { display: inline-block; font-size: 13px; font-weight: 700; background: var(--bad); color: #fff; border-radius: 4px; padding: 1px 8px; margin-left: 6px; vertical-align: 3px; }
+  .note { font-size: 14px; color: var(--muted); margin-top: 12px; }
+  .intro { font-size: 18px; color: var(--muted); margin-top: 70px; text-align: center; }
+  .intro b { color: var(--navy); }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>The RAG loop</h1>
+  <button id="back">◀ Back</button>
+  <button id="next">Next ▶</button>
+  <button id="reset">Reset</button>
+  <span class="sp"></span>
+  <button id="off" class="warn">Retrieval OFF</button>
+</div>
+<div class="pipe" id="pipe"></div>
+<div class="panel" id="panel"></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script src="search.js"></script>
+<script>
+const STAGES = [
+  ['Question', 'new message'],
+  ['Retrieve', 'search our sources'],
+  ['Augment', 'passages into the prompt'],
+  ['Generate', 'answer with citations'],
+];
+const HITS = ['c07', 'c19', 'c03']; // ranked by relevance after rerank
+const cite = id => `<span class="cite">${Demo.esc(Demo.chunk(id).src.replace(/ §.*/, ''))}</span>`;
+const state = { step: 0, off: Demo.param('preset', '') === 'off' };
+
+function render(s) {
+  let h = '';
+  STAGES.forEach((st, i) => {
+    const n = i + 1;
+    let cls = s.step === n ? 'now' : s.step > n ? 'done' : '';
+    if (s.off && n === 2 && s.step >= 2) cls = 'dead';
+    h += `<div class="stage ${cls}"><b>${n}. ${st[0]}</b><small>${n === 2 && s.off ? 'switched off' : st[1]}</small></div>`;
+    if (i < 3) h += `<div class="arrow ${s.step > n ? 'done' : ''}">➜</div>`;
+  });
+  document.getElementById('pipe').innerHTML = h;
+  document.getElementById('off').classList.toggle('on', s.off);
+  document.getElementById('back').disabled = s.step === 0;
+  document.getElementById('next').disabled = s.step === 4;
+  document.getElementById('panel').innerHTML = panel(s);
+}
+
+function panel(s) {
+  if (s.step === 0) return `<div class="intro">Sam asks the team assistant a question.<br>Press <b>Next ▶</b> to follow it through the loop.${s.off ? '<br><br><span class="bad">Retrieval is OFF: the model gets the question and nothing else.</span>' : ''}</div>`;
+  if (s.step === 1) return `<h2>1. Question <span class="coord">on the request: new message</span></h2>
+    <div class="muted">Sam, on call this week, types:</div>
+    <div class="bubble">Why did we drop vendor A?</div>
+    <div class="note">The model has never seen Contoso's minutes. Everything it needs has to arrive on this request.</div>`;
+  if (s.step === 2) {
+    if (s.off) return `<h2>2. Retrieve <span class="coord">on the request: retrieved context</span></h2>
+      <div class="empty">Retrieval is off.<br>Nothing is searched, nothing is found, nothing is sent.</div>`;
+    return `<h2>2. Retrieve <span class="coord">search the minutes, mail and designs, keep the top 3</span></h2>` +
+      HITS.map((id, i) => {
+        const c = Demo.chunk(id), sc = rerankScore('q1', id);
+        return `<div class="hit"><div class="rk">${i + 1}</div>
+          <div class="txt"><span class="chip ${c.type}">${Demo.esc(c.src)}</span><br>${Demo.esc(c.text)}</div>
+          <div><div class="meter"><i style="width:${sc * 100}%"></i></div><div class="score">relevance ${sc.toFixed(2)}</div></div></div>`;
+      }).join('') + `<div class="note">Each passage keeps its source. That source becomes the citation in step 4.</div>`;
+  }
+  if (s.step === 3) {
+    const psg = s.off ? `<div class="slot psg none"><div class="lab"><span>PASSAGES</span><span>retrieved context</span></div>(empty: retrieval is off)</div>`
+      : `<div class="slot psg"><div class="lab"><span>PASSAGES</span><span>retrieved context</span></div>` +
+        HITS.map(id => { const c = Demo.chunk(id); return `[${Demo.esc(c.src)}] ${Demo.esc(c.text.length > 120 ? c.text.slice(0, 118) + '…' : c.text)}`; }).join('<br>') + `</div>`;
+    return `<h2>3. Augment <span class="coord">build the prompt: rules, passages, question</span></h2><div class="prompt">
+      <div class="slot sys"><div class="lab"><span>SYSTEM</span><span>system prompt</span></div>You answer questions for the Contoso archive team from the passages below only.<br>Cite every claim as [source]. If the passages don't answer the question, say so.</div>
+      ${psg}
+      <div class="slot q"><div class="lab"><span>QUESTION</span><span>new message</span></div>Why did we drop vendor A?</div></div>`;
+  }
+  // step 4
+  if (s.off) return `<h2>4. Generate <span class="coord">on the request: response</span></h2>
+    <div class="answer badans">Vendor A was dropped because of high licence costs.<span class="nosrc">no source</span></div>
+    <div class="note">Confident, fluent, wrong. With no passages the model writes the most likely-sounding reason. Where did "licence costs" come from? Nowhere.</div>`;
+  return `<h2>4. Generate <span class="coord">on the request: response</span></h2>
+    <div class="answer">Vendor A was dropped on 2026-10-01 because no on-premise parser exists before next year ${cite('c07')}.
+    Its collector sends logs to vendor A's cloud for parsing ${cite('c03')}, but logs can carry user and document identifiers, so collection and parsing must run on-premise ${cite('c19')}.</div>
+    <div class="note">Every claim points at a passage. Sam can open the minutes and check.</div>`;
+}
+
+const set = Demo.sync('rag-loop', state, render);
+document.getElementById('next').onclick = () => set({ step: Math.min(4, state.step + 1) });
+document.getElementById('back').onclick = () => set({ step: Math.max(0, state.step - 1) });
+document.getElementById('reset').onclick = () => set({ step: 0, off: false });
+document.getElementById('off').onclick = () => set({ off: !state.off });
+Demo.label();
+</script>
+</body>
+</html>

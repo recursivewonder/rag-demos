@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Agentic retrieval</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .top h1 { margin: 0 8px 0 0; }
+  .top .sp { flex: 1; }
+  .top button { font-size: 14px; padding: 3px 10px; }
+  .main { display: grid; grid-template-columns: 640px 1fr; gap: 12px; height: 528px; }
+  .h { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .q { font-size: 17px; font-weight: 700; color: var(--navy-deep); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; margin-bottom: 8px; }
+  .q small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .path { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; flex-wrap: nowrap; }
+  .pn { font-family: var(--mono); font-size: 13px; border: 1.5px solid var(--line); border-radius: 14px; padding: 2px 9px; color: var(--muted); white-space: nowrap; }
+  .pn.done { border-color: var(--navy); color: var(--navy); background: var(--navy-tint); }
+  .pn.now { border-color: var(--orange); background: var(--orange-tint); color: #8a3d0b; font-weight: 700; }
+  .pa { color: var(--line); } .pa.done { color: var(--navy); }
+  .turn { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; height: 420px; overflow: hidden; }
+  .thought { font-size: 15px; font-style: italic; color: var(--ink); background: #f4f0fb; border-left: 5px solid #7d4cc2; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
+  .thought b { font-style: normal; color: #5b3a99; font-size: 13px; display: block; }
+  .call { font-family: var(--mono); font-size: 13px; background: #1d2733; color: #e8eef4; border-radius: 8px; padding: 6px 12px; margin-bottom: 6px; white-space: pre; line-height: 1.35; }
+  .call .k { color: #ffb37a; } .call .s { color: #9fe0b4; } .call .c { color: #8fa3b5; }
+  .rescard { border: 1px solid var(--line); border-left: 5px solid var(--good); border-radius: 8px; padding: 5px 10px; font-size: 14px; margin-bottom: 5px; }
+  .rescard.empty { border-left-color: var(--muted); color: var(--muted); font-family: var(--mono); }
+  .rescard .meta { font-size: 13px; color: var(--muted); }
+  .answer { font-size: 16px; line-height: 1.6; background: var(--good-tint); border-left: 6px solid var(--good); border-radius: 10px; padding: 10px 14px; }
+  .cite { display: inline-block; font-size: 13px; font-weight: 700; background: var(--navy); color: #fff; border-radius: 4px; padding: 0 6px; margin: 0 2px; vertical-align: 1px; }
+  .tools { font-family: var(--mono); font-size: 13px; line-height: 1.4; }
+  .tool { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; margin-bottom: 5px; background: var(--paper); transition: all .2s; }
+  .tool b { color: var(--navy); }
+  .tool .d { font-family: var(--sans); color: var(--muted); }
+  .tool.used { border-color: var(--orange); background: var(--orange-tint); }
+  .cmp { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
+  .flow { display: flex; align-items: center; gap: 4px; font-size: 13px; margin: 4px 0; flex-wrap: wrap; }
+  .box { border: 1.5px solid var(--navy); border-radius: 6px; padding: 1px 7px; color: var(--navy); background: var(--card); }
+  .box.m { border-color: #7d4cc2; color: #5b3a99; background: #f4f0fb; font-weight: 700; }
+  .box.t { border-color: var(--orange); color: #8a3d0b; background: var(--orange-tint); }
+  .switch { font-size: 13px; font-weight: 700; color: var(--orange); }
+  .small { font-size: 13px; color: var(--muted); }
+  .intro { font-size: 16px; color: var(--muted); margin-top: 40px; text-align: center; line-height: 1.7; }
+  .jira { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .jcol { border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; height: 420px; }
+  .jcol.on { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(244,116,33,.15); }
+  .jcol h3 { font-size: 17px; }
+  .status { display: inline-block; font-weight: 800; border-radius: 6px; padding: 1px 10px; font-size: 15px; }
+  .status.open { background: var(--warn-tint); color: var(--warn); } .status.done { background: var(--good-tint); color: var(--good); }
+  .ansbad { font-size: 16px; line-height: 1.55; background: var(--bad-tint); border-left: 6px solid var(--bad); border-radius: 10px; padding: 10px 14px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Agentic retrieval</h1>
+  <button data-view="agent">Agent run</button>
+  <button data-view="jira">Indexed vs live status</button>
+  <span class="sp"></span>
+  <span id="ctl"></span>
+</div>
+<div id="main"></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script src="search.js"></script>
+<script>
+const TOOLS = [
+  ['search_docs', '(query, source_type?, platform?)', 'Search the indexed SOPs, known issues, minutes, mail and notes.'],
+  ['find_tickets', '(tenant)', 'Live: past tickets for a tenant, newest first.'],
+  ['jira_search', '(jql)', 'Live: Jira issues matching a JQL query, with current status.'],
+];
+const STEPS = [
+  null,
+  { tool: 'find_tickets', thought: 'Start with the tenant\'s history: has Fabrikam Legal reported this before?',
+    call: { tool: 'find_tickets', args: { tenant: 'Fabrikam Legal' } },
+    result: () => `<div class="h">Result · 3 tickets</div>
+      <div class="rescard"><div class="meta">TCK-4471 · 2026-07-09 · Content Hub</div>${Demo.esc(Demo.chunk('c30').text)}</div>
+      <div class="rescard"><div class="meta">2 more · 2026-04 and 2026-09 · Content Hub</div>Fabrikam Legal: search returns nothing for new documents. Resolved by the same fix.</div>` },
+  { tool: 'search_docs', thought: 'The tickets mention the index worker. Look up the documented fix.',
+    call: { tool: 'search_docs', args: { query: 'search returns nothing', platform: 'Content Hub' } },
+    result: () => `<div class="h">Result · top 2</div>` + ['c20', 'c25'].map(id => { const c = Demo.chunk(id); return `<div class="rescard"><div class="meta">${Demo.esc(c.src)} · ${c.date}</div>${Demo.esc(c.text)}</div>`; }).join('') },
+  { tool: 'jira_search', thought: 'History and fix found. The question also asks "is anything open?": that is status, so ask Jira live.',
+    call: { tool: 'jira_search', args: { jql: 'text ~ Fabrikam AND status != Done' } },
+    result: () => `<div class="h">Result</div><div class="rescard empty">{ "issues": [], "total": 0 }</div><div class="small">An empty result is an answer too: nothing is open.</div>` },
+  { tool: 'answer', thought: 'I have the history, the fix and the status. Enough to answer; no more searches.' },
+];
+const PATH = ['question', 'find_tickets', 'search_docs', 'jira_search', 'answer'];
+const P = Demo.param('preset', '');
+const state = { view: P === 'jira' ? 'jira' : 'agent', step: 0, jira: 'stale' };
+
+function hl(call) {
+  const args = Object.entries(call.args).map(([k, v]) => `    <span class="k">"${k}"</span>: <span class="s">${Demo.esc(JSON.stringify(v))}</span>`).join(',\n');
+  return `{ <span class="k">"tool"</span>: <span class="s">"${call.tool}"</span>,\n  <span class="k">"args"</span>: {\n${args}\n  } }`;
+}
+
+function render(s) {
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === s.view));
+  document.getElementById('ctl').innerHTML = s.view === 'agent'
+    ? `<button id="back" ${s.step === 0 ? 'disabled' : ''}>◀ Back</button> <button id="next" ${s.step === 4 ? 'disabled' : ''}>Next ▶</button> <button id="reset">Reset</button>`
+    : `<button data-j="stale" class="${s.jira === 'stale' ? 'on' : ''}">Jira indexed nightly</button> <button data-j="live" class="${s.jira === 'live' ? 'on' : ''}">Jira as a live tool</button>`;
+  document.getElementById('main').innerHTML = s.view === 'agent' ? agent(s) : jira(s);
+}
+
+function agent(s) {
+  const path = PATH.map((p, i) => `<span class="pn ${i < s.step ? 'done' : i === s.step ? 'now' : ''}">${p}</span>`).join('<span class="pa">→</span>');
+  let turn;
+  if (s.step === 0) turn = `<div class="intro">The model gets the question <b>and three tool definitions</b> (right).<br>It decides which tool to call, with what, and when to stop.<br>Press <b>Next ▶</b> to watch each turn.</div>`;
+  else if (s.step < 4) {
+    const st = STEPS[s.step];
+    turn = `<div class="h">Turn ${s.step}</div><div class="thought"><b>model thinks</b>${Demo.esc(st.thought)}</div>
+      <div class="h">Tool call</div><div class="call">${hl(st.call)}</div>${st.result()}`;
+  } else {
+    const cite = t => `<span class="cite">${t}</span>`;
+    turn = `<div class="h">Turn 4 · final answer</div><div class="thought"><b>model thinks</b>${Demo.esc(STEPS[4].thought)}</div>
+      <div class="answer">Yes. Fabrikam Legal reported search returning nothing three times (2026-04, 2026-07, 2026-09) ${cite('TCK-4471')}.
+      In July we restarted the index worker, cleared its temp folder and re-queued the folder ${cite('TCK-4471')}. That is KI-014's fix ${cite('KI-014')} plus the temp-folder step from Priya's note ${cite('priya-notes/index-worker-fix.docx')}.
+      Nothing is open in Jira for Fabrikam ${cite('jira_search: 0 issues')}.</div>
+      <div class="small" style="margin-top:8px">3 tool calls, 4 model turns. Cost: more calls and tokens, less predictable than a fixed workflow.</div>`;
+  }
+  const used = new Set(PATH.slice(1, s.step + 1));
+  const tools = TOOLS.map(([n, sig, d]) => `<div class="tool ${used.has(n) ? 'used' : ''}"><b>${n}</b>${sig}<div class="d">${d}</div></div>`).join('');
+  return `<div class="main"><div>
+      <div class="q">"Has Fabrikam Legal reported this before, what did we do, and is anything open?"<small>asked by Priya · needs tickets, docs and Jira: one search over one index can't do it</small></div>
+      <div class="path">${path}</div>
+      <div class="turn">${turn}</div>
+    </div><div>
+      <div class="h">Tool definitions (on the request)</div><div class="tools">${tools}</div>
+      <div class="cmp"><div class="h">Workflow (so far)</div>
+        <div class="flow"><span class="box">question</span>→<span class="box">search</span>→<span class="box">prompt</span>→<span class="box m">model</span>→<span class="box">answer</span></div>
+        <div class="small">Code fixes the steps; the model fills the last one. One search here returns KI-014, TCK-4471, SOP-CH-03 §3: no Jira, so "is anything open?" goes unanswered.</div>
+      </div>
+      <div class="cmp" style="${s.step > 0 ? 'border-color:var(--orange)' : ''}"><div class="h">Agent <span class="switch">${s.step > 0 ? '← the switch: the model picks the next step' : ''}</span></div>
+        <div class="flow"><span class="box">question</span>→<span class="box m">model</span>⇄<span class="box t">tools ×${Math.min(s.step, 3)}</span>→<span class="box">answer</span></div>
+        <div class="small">Path so far: ${s.step === 0 ? '(not started)' : PATH.slice(1, s.step + 1).join(' → ')}</div>
+      </div>
+    </div></div>`;
+}
+
+function jira(s) {
+  const c = Demo.chunk('c29');
+  const stale = s.jira === 'stale';
+  return `<div class="q" style="margin-bottom:10px">"${Demo.esc(QUERIES.find(q => q.id === 'q7').text)}"<small>today is 2026-10-08 · POC-12 was closed yesterday</small></div>
+    <div class="jira">
+      <div class="jcol ${stale ? 'on' : ''}" data-j="stale"><h3>Jira indexed nightly, like a document</h3>
+        <div class="h">search_docs retrieves</div>
+        <div class="rescard" style="border-left-color:var(--warn)"><div class="meta">${Demo.esc(c.src)} · <b style="color:var(--warn)">stale</b></div>${Demo.esc(c.text)}</div>
+        <div style="margin:8px 0">POC-12 status: <span class="status open">Open</span> <span class="small">as of the 2026-10-06 snapshot</span></div>
+        ${stale ? `<div class="h">Answer</div><div class="ansbad">Yes, vendor B's pricing answer is still open <span class="cite">POC-12 snapshot</span>.</div><div class="small" style="margin-top:6px">Grounded in a passage and still wrong: the passage was out of date.</div>` : ''}
+      </div>
+      <div class="jcol ${!stale ? 'on' : ''}" data-j="live"><h3>Jira as a live tool</h3>
+        <div class="h">Tool call</div>
+        <div class="call">${hl({ tool: 'jira_search', args: { jql: 'key = POC-12' } })}</div>
+        <div class="rescard"><div class="meta">live · 2026-10-08</div>POC-12 Ask vendor B: pricing per GB at 200 GB/day. <span class="status done">Done</span> resolved 2026-10-07</div>
+        ${!stale ? `<div class="h">Answer</div><div class="answer">No. Vendor B's pricing answer came in yesterday <span class="cite">POC-12, Done 2026-10-07</span>.</div><div class="small" style="margin-top:6px">Rule: index slow-changing text; ask fast-changing facts live.</div>` : ''}
+      </div>
+    </div>`;
+}
+
+const set = Demo.sync('agentic', state, render);
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-view],[data-j],#next,#back,#reset'); if (!b) return;
+  if (b.dataset.view) set({ view: b.dataset.view });
+  else if (b.dataset.j) set({ jira: b.dataset.j });
+  else if (b.id === 'next') set({ step: Math.min(4, state.step + 1) });
+  else if (b.id === 'back') set({ step: Math.max(0, state.step - 1) });
+  else if (b.id === 'reset') set({ step: 0 });
+});
+Demo.label();
+</script>
+</body>
+</html>

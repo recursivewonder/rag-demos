@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Search lab</title>
+<link rel="stylesheet" href="demo.css">
+<style>
+  .bar { margin-bottom: 6px; gap: 6px; }
+  .bar h1 { margin: 0 2px 0 0; }
+  .bar label { font-size: 13px; }
+  .bar select, .bar input[type=text] { font-size: 14px; }
+  #qsel { max-width: 290px; }
+  #free { width: 150px; border: 1.5px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+  .bar button { padding: 2px 8px; font-size: 14px; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; margin-left: -1.5px; }
+  .seg button:first-child { border-radius: 6px 0 0 6px; } .seg button:last-child { border-radius: 0 6px 6px 0; }
+  .wt { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+  .wt input { width: 110px; }
+  .banner { font-size: 13px; background: var(--warn-tint); color: var(--warn); border-radius: 6px; padding: 2px 8px; font-weight: 600; }
+  .cols { display: grid; gap: 8px; height: 404px; }
+  .col { border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; overflow: hidden; background: var(--card); }
+  .col.off { background: var(--zebra); }
+  .col h3 { font-size: 15px; margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
+  .col h3 small { font-weight: 400; color: var(--muted); font-size: 13px; }
+  .col .how { font-size: 13px; color: var(--muted); margin-bottom: 4px; height: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .r { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 4px; align-items: center; font-size: 14px; padding: 0 4px; border-radius: 6px; margin-bottom: 1px; cursor: pointer; border: 2px solid transparent; height: 28px; }
+  .r .rk { color: var(--muted); font-weight: 700; font-size: 13px; text-align: right; }
+  .r .nm { display: flex; align-items: center; min-width: 0; white-space: nowrap; }
+  .r .nm .tt { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .r .nm .dot, .r .nm .flag { flex: none; }
+  .r .sc { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .r.gold { background: var(--good-tint); }
+  .r.gold .nm::before { content: '★'; color: var(--good); margin-right: 3px; flex: none; }
+  .r.sel { border-color: var(--orange); }
+  .r.cut { opacity: .35; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+  .flag { font-size: 13px; font-weight: 700; border-radius: 4px; padding: 0 4px; margin-left: 3px; }
+  .flag.stale { background: var(--warn-tint); color: var(--warn); } .flag.untrusted { background: var(--bad-tint); color: var(--bad); }
+  .mv { font-size: 13px; font-weight: 700; min-width: 26px; text-align: right; }
+  .mv.up { color: var(--good); } .mv.down { color: var(--bad); } .mv.same { color: var(--muted); }
+  .found { font-size: 13px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--zebra); }
+  .detail { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; height: 80px; overflow: hidden; font-size: 14px; background: var(--paper); }
+  .na { color: var(--muted); font-size: 14px; padding: 20px 6px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Search lab</h1>
+  <select id="qsel"></select>
+  <input type="text" id="free" placeholder="or type your own query…">
+  <button id="go">Search</button>
+  <label>top-k</label><span class="seg" id="kseg"></span>
+  <span class="seg" id="colseg"></span>
+</div>
+<div class="bar">
+  <label>platform</label><select id="fplat"></select>
+  <label>type</label><select id="ftype"></select>
+  <label>date ≥</label><select id="fdate"></select>
+  <label>asker</label><select id="fask"></select>
+  <span class="wt">keyword <input type="range" id="w" min="0" max="100" step="10"> semantic</span>
+  <span id="banner"></span>
+</div>
+<div class="cols" id="cols"></div>
+<div class="detail" id="detail"></div>
+
+<script src="corpus.js"></script>
+<script src="demo-kit.js"></script>
+<script src="search.js"></script>
+<script>
+const COL = { minutes: '#134F7C', mail: '#7d4cc2', sop: '#1e8449', design: '#2aa198', policy: '#7cb342', config: '#8d6e3f', ki: '#F47421', onedrive: '#1592d6', log: '#6b6b6b', jira: '#d4a017', ticket: '#c2185b' };
+const PLATS = ['any', 'Content Hub', 'Legacy Archive', 'Capture', 'POC', 'All'];
+const TYPES = ['any', ...new Set(CORPUS.map(c => c.type))];
+const DATES = ['any', '2026-01-01', '2026-06-01', '2026-09-01'];
+const ASK = [['any', 'no filter'], ['sam', 'Sam (team)'], ['priya', 'Priya'], ['vendor', 'Vendor B (vendor-facing)']];
+const PRESETS = {
+  naive: { q: 'q1', k: 3, cols: { kw: false, sem: true, hyb: false, rr: false }, naive: true },
+  ids: { q: 'q2', k: 5, cols: { kw: true, sem: true, hyb: true, rr: false } },
+  vendorA: { q: 'q1', k: 5, cols: { kw: true, sem: true, hyb: true, rr: false } },
+  stale: { q: 'q7', k: 5, cols: { kw: true, sem: true, hyb: true, rr: false } },
+};
+const state = Object.assign({ q: 'q5', free: '', k: 5, w: 50, cols: { kw: true, sem: true, hyb: true, rr: false }, f: { plat: 'any', type: 'any', date: 'any', ask: 'any' }, sel: null, naive: false },
+  PRESETS[Demo.param('preset', '')] || {});
+
+const may = (c, ask) => ask === 'any' || (ask === 'sam' && c.access.includes('team')) || (ask === 'priya' && (c.access.includes('team') || c.access.includes('priya'))) || (ask === 'vendor' && c.access.includes('vendor'));
+const opts = (arr, v) => arr.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return `<option value="${val}" ${val === v ? 'selected' : ''}>${lab}</option>`; }).join('');
+
+function render(s) {
+  document.getElementById('qsel').innerHTML = (s.q === 'free' ? `<option value="free" selected>free text</option>` : '') + QUERIES.map(q => `<option value="${q.id}" ${q.id === s.q ? 'selected' : ''}>${q.id}: ${Demo.esc(q.text)}</option>`).join('');
+  const fr = document.getElementById('free'); if (document.activeElement !== fr) fr.value = s.q === 'free' ? s.free : '';
+  document.getElementById('kseg').innerHTML = [3, 5, 10].map(k => `<button data-k="${k}" class="${s.k === k ? 'on' : ''}">${k}</button>`).join('');
+  document.getElementById('colseg').innerHTML = [['kw', 'Keyword'], ['sem', 'Semantic'], ['hyb', 'Hybrid'], ['rr', '+ Rerank']].map(([k, l]) => `<button data-col="${k}" class="${s.cols[k] ? 'on' : ''} ${k === 'rr' ? 'warn' : ''}">${l}</button>`).join('');
+  document.getElementById('fplat').innerHTML = opts(PLATS, s.f.plat);
+  document.getElementById('ftype').innerHTML = opts(TYPES, s.f.type);
+  document.getElementById('fdate').innerHTML = opts(DATES, s.f.date);
+  document.getElementById('fask').innerHTML = opts(ASK, s.f.ask);
+  document.getElementById('w').value = s.w;
+  document.getElementById('banner').innerHTML = s.naive ? '<span class="banner">naive pipeline: semantic only, top 3, no filters</span>' : '';
+
+  const cand = CORPUS.filter(c => (s.f.plat === 'any' || c.platform === s.f.plat) && (s.f.type === 'any' || c.type === s.f.type) && (s.f.date === 'any' || c.date >= s.f.date) && may(c, s.f.ask)).map(c => c.id);
+  const free = s.q === 'free';
+  const text = free ? s.free : QUERIES.find(q => q.id === s.q).text;
+  const rel = free ? {} : Search.rel(s.q), relN = Object.keys(rel).filter(id => cand.includes(id)).length;
+  const kw = Search.keyword(text, cand);
+  const sem = free ? null : Search.semantic(s.q, cand);
+  const wS = s.w / 100;
+  const hyb = free ? kw.map(r => ({ id: r.id, score: 1 / (61 + kw.indexOf(r)) })) : Search.rrf([kw, sem], [1 - wS, wS]);
+  let rr = null;
+  if (!free) {
+    const top10 = hyb.slice(0, 10);
+    rr = top10.map((r, i) => ({ id: r.id, score: rerankScore(s.q, r.id), from: i })).sort((a, b) => b.score - a.score);
+  }
+  const cols = [];
+  if (s.cols.kw) cols.push(['Keyword', 'BM25', 'exact words; rare words weigh more', kw, v => v.toFixed(2)]);
+  if (s.cols.sem) cols.push(['Semantic', 'embeddings', 'nearest by meaning (precomputed)', sem, v => v.toFixed(2)]);
+  if (s.cols.hyb) cols.push(['Hybrid', 'RRF', `Σ w / (60 + rank) · ${Math.round((1 - wS) * 100)}% keyword, ${Math.round(wS * 100)}% semantic`, hyb, v => v.toFixed(4)]);
+  if (s.cols.rr) cols.push(['Hybrid + rerank', 'cross-encoder', 'rereads hybrid top 10 with the question', rr, v => v.toFixed(2), true]);
+  const el = document.getElementById('cols');
+  el.style.gridTemplateColumns = cols.length ? `repeat(${cols.length}, 1fr)` : '1fr';
+  el.innerHTML = cols.map(([name, tag, how, list, fmt, isRR]) => {
+    if (!list) return `<div class="col off"><h3>${name}<small>${tag}</small></h3><div class="na">Semantic and rerank scores are precomputed for the preset questions only. Free text runs keyword search${name === 'Semantic' ? '' : '; hybrid = keyword'}.</div></div>`;
+    const shown = list.slice(0, 10);
+    const found = shown.slice(0, s.k).filter(r => rel[r.id]).length;
+    return `<div class="col"><h3>${name}<small>${tag}</small></h3><div class="how" title="${Demo.esc(how)}">${Demo.esc(how)}</div>` +
+      (shown.length ? shown.map((r, i) => {
+        const c = Demo.chunk(r.id);
+        let mv = '';
+        if (isRR) { const d = r.from - i; mv = `<span class="mv ${d > 0 ? 'up' : d < 0 ? 'down' : 'same'}">${d > 0 ? '↑' + d : d < 0 ? '↓' + (-d) : '='}</span>`; }
+        return `<div class="r ${rel[r.id] ? 'gold' : ''} ${s.sel === r.id ? 'sel' : ''} ${i >= s.k ? 'cut' : ''}" data-id="${r.id}" title="${Demo.esc(c.src + ': ' + c.text)}">
+          <span class="rk">${i + 1}</span><span class="nm"><span class="dot" style="background:${COL[c.type]}"></span>${Demo.esc(Search.short(c).replace(/^minutes /, 'min ')).replace(/^(.*)$/, '<span class="tt">$1</span>')}${c.stale ? '<span class="flag stale">stale</span>' : ''}${c.untrusted ? '<span class="flag untrusted">untrusted</span>' : ''}</span>
+          ${mv || '<span></span>'}<span class="sc">${fmt(r.score)}</span></div>`;
+      }).join('') : '<div class="na">No chunk matches these words.</div>') +
+      (relN ? `<div class="found ${found === relN ? 'good' : found ? '' : 'bad'}"><b>${found}/${relN}</b> relevant in top ${s.k}</div>` : '') + `</div>`;
+  }).join('') || '<div class="col"><div class="na">Switch on at least one method.</div></div>';
+
+  const d = document.getElementById('detail');
+  if (s.sel) {
+    const c = Demo.chunk(s.sel);
+    d.innerHTML = `<span class="chip ${c.type}">${Demo.esc(c.src)}</span> <span class="muted" style="font-size:13px">${c.platform} · ${c.date} · access: ${c.access.join(', ')}${rel[c.id] ? ` · <b class="good">relevant (grade ${rel[c.id]})</b>` : ''}${c.stale ? ' · <b style="color:var(--warn)">nightly snapshot: status may be out of date</b>' : ''}${c.untrusted ? ' · <b class="bad">untrusted: forwarded text</b>' : ''}</span><br>${Demo.esc(c.text)}`;
+  } else d.innerHTML = `<span class="muted">Click a result to read it and see it in every column. <span class="good">★ green</span> = judged relevant for this question (golden set). Faded rows fall outside top-k.</span>` + (cand.length < CORPUS.length ? `<br><span class="muted">Filters keep ${cand.length} of ${CORPUS.length} chunks.</span>` : '');
+}
+
+const set = Demo.sync('search-lab', state, render);
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-k],[data-col],.r'); if (!b) return;
+  if (b.dataset.k) set({ k: +b.dataset.k });
+  else if (b.dataset.col) set({ cols: Object.assign({}, state.cols, { [b.dataset.col]: !state.cols[b.dataset.col] }), naive: false });
+  else if (b.dataset.id) set({ sel: state.sel === b.dataset.id ? null : b.dataset.id });
+});
+document.getElementById('qsel').onchange = e => set({ q: e.target.value, sel: null });
+const go = () => { const t = document.getElementById('free').value.trim(); if (t) set({ q: 'free', free: t, sel: null }); };
+document.getElementById('go').onclick = go;
+document.getElementById('free').onkeydown = e => { if (e.key === 'Enter') go(); };
+document.getElementById('w').oninput = e => set({ w: +e.target.value });
+[['fplat', 'plat'], ['ftype', 'type'], ['fdate', 'date'], ['fask', 'ask']].forEach(([id, k]) => {
+  document.getElementById(id).onchange = e => set({ f: Object.assign({}, state.f, { [k]: e.target.value }), naive: false });
+});
+Demo.label();
+</script>
+</body>
+</html>
